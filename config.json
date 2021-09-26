@@ -1,0 +1,19 @@
+{
+  "items_per_session": 100,
+  "sessions_per_item": 5000,
+  "df_columns":
+  {
+    "session_id": "session_id",
+    "timestamp": "timestamp",
+    "item_id": "item_id",
+    "category": "category",
+    "item_value": "item_value"
+  },
+  "data_sources": {
+      "full_data": "archive/yoochoose-data/yoochoose-clicks.dat"
+  },
+  "index_storage": {
+    "session_index": "stored_indices/sessions_to_items.csv",
+    "item_index": "stored_indices/items_to_sessions.csv"
+  }
+}
