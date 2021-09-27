@@ -10,7 +10,9 @@
     "item_value": "item_value"
   },
   "data_sources": {
-      "full_data": "archive/yoochoose-data/yoochoose-clicks.dat"
+    "full_data": "archive/yoochoose-data/yoochoose-clicks.dat",
+    "train_data": "archive/yoochoose-data/train_set.dat",
+    "test_data": "archive/yoochoose-data/test_set.dat"
   },
   "index_storage": {
     "session_index": "stored_indices/sessions_to_items.csv",
