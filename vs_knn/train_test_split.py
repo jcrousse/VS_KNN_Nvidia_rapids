@@ -16,6 +16,7 @@ def train_test_split(test_size=5000):
     n_sessions = len(all_sessions)
     print(f"Found {n_sessions} unique sessions in the dataset")
 
+    random.seed(555)
     test_sessions = random.sample(all_sessions, test_size)
 
     train_data = full_df[~full_df['session'].isin(test_sessions)]

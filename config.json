@@ -1,13 +1,15 @@
 {
-  "items_per_session": 100,
+  "items_per_session": 10,
   "sessions_per_item": 5000,
+  "top_k": 100,
   "df_columns":
   {
     "session_id": "session_id",
     "timestamp": "timestamp",
     "item_id": "item_id",
     "category": "category",
-    "item_value": "item_value"
+    "item_position": "item_position",
+    "pi_i": "pi_i"
   },
   "data_sources": {
     "full_data": "archive/yoochoose-data/yoochoose-clicks.dat",
