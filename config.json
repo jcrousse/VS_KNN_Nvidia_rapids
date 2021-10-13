@@ -2,6 +2,7 @@
   "items_per_session": 10,
   "sessions_per_item": 5000,
   "top_k": 100,
+  "item_position_column": false,
   "df_columns":
   {
     "session_id": "session_id",

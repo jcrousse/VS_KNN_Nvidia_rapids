@@ -31,26 +31,83 @@ test_examples = pd.DataFrame(session_to_item).to_dict(orient='index')
 
 test_examples = {k: v['item'][0:project_config['items_per_session']] for k, v in test_examples.items()}
 
-
 top_k = project_config['top_k']
-for test_session in test_examples:
-    session_items = test_examples[test_session]
+
+examples_100 = list(test_examples.keys())[0:100]
+
+
+def step1_query_to_cudf(session_items):
+    """Convert session data to"""
     n_items = len(session_items)
-    pi_i = [e / n_items for e in range(n_items - 1, -1, -1)]
-    session_data = cudf.DataFrame({'pi_i': pi_i},
-                                  index=session_items)
-    all_sessions = vs_knn_indices.item_index.loc[session_items]
-    unique_sessions = all_sessions.drop_duplicates()
-    sess_item_pos = unique_sessions.join(session_data)
-    sess_item_pos = sess_item_pos.set_index(SESSION_ID)
+    pi_i = [e / n_items for e in range(n_items, 0, -1)]
+    session_df = cudf.DataFrame({'pi_i': pi_i},
+                                index=session_items)
+    return session_df
 
-    sess_item_pos = sess_item_pos.join(vs_knn_indices.session_index)
 
-    if top_k:
-        sessions_w_intersection = sess_item_pos[sess_item_pos[ITEM_ID].isin(session_items)]
-        sessions_w_intersection = sessions_w_intersection.reset_index()
-        session_values = sessions_w_intersection.groupby(SESSION_ID).agg({PI_I: 'sum'})
-        top_k_sessions = session_values.sort_values(by=[PI_I], ascending=False)[0:top_k]
+def step2_get_sessions_per_items(query_items, query_df):
+    """For each item in query get past sessions containing the item.
+    Returns dataframe with item_id (index) corresponding session_id and pi_i value"""
+    past_sessions = vs_knn_indices.item_index.loc[query_items]
+    items_sessions_pi = step_21_join(past_sessions, query_df)
+    return items_sessions_pi
+
+
+def step_21_join(df1, df2):
+    return df1.join(df2)
+
+
+def step3_tbd(items_sessions_pi):
+    """group item - session - pi_i by session to get the total similarity (pi_i) per session"""
+    session_pi = items_sessions_pi.set_index(SESSION_ID)
+    session_to_items = vs_knn_indices.session_index.loc[session_pi.index]
+    sess_item_pos[PI_I] = sess_item_pos['item_position'] * 0
+    return sess_item_pos
+
+
+def step4_topk(sess_item_pos, session_items):
+    sessions_w_intersection = sess_item_pos[sess_item_pos[ITEM_ID].isin(session_items)]
+    sessions_w_intersection = sessions_w_intersection.reset_index()
+    return step3_keep_topk(sessions_w_intersection)
+
+
+def step3_keep_topk(df):
+    df = df.groupby(SESSION_ID).agg({PI_I: 'sum'})
+    return df.sort_values(by=[PI_I], ascending=False)[0:top_k]
+
+
+def step4_score_items_in_sessions(top_k_sessions):
+    """for the top k sessions with similarity scores, get the items in the sessions.
+    Then get total similarity per item"""
+    top_k_items = vs_knn_indices.session_index.loc[top_k_sessions.index]
+    sessions_with_items = top_k_sessions.join(top_k_items)
+    item_scores = sessions_with_items.groupby(ITEM_ID).agg({PI_I: 'sum'})
+    return item_scores
+
+import datetime
+import numpy as np
+timus = np.zeros(len(examples_100))
+
+for idx, user_session in enumerate(examples_100):
+    query_items = test_examples[user_session]
+    
+    start = datetime.datetime.now()
+    
+    query_df = step1_query_to_cudf(query_items)
+    items_sessions_pi = step2_get_sessions_per_items(query_items, query_df)
+    top_k_sessions = step3_keep_topk(items_sessions_pi)
+    item_scores = step4_score_items_in_sessions(top_k_sessions)
+
+    end = datetime.datetime.now()
+    delta = end - start
+    timus[idx] = int(delta.total_seconds() * 1000)
+
+print("average duration: ", np.average(timus), " milliseconds")
+print("p90 duration: ", np.percentile(timus, 90), " milliseconds")
+stopus = 1
+
+
+
 
 
 
@@ -64,26 +121,26 @@ for test_session in test_examples:
 #  -Calculate Session Index
 #  -Calculate Item Index
 #  Then ze algo:
-#       input is a session, and we want to get k-nearest sessions quick:
-#           -Try to index the item_to_session df with all items in session.
-#               Keep only first occurrence of each item before index, then first of
-#               each session (set, then df.loc then .drop_duplicates)
-#           -convert results to a Series where index= item_id and value= pi_i
-#           -Do a join with the session index?
-#           -Left(?) join with pi_i values per item from original session
-#           -Keep only items per session in original session (another join):
-#             Aggreg on sum of pi_i per session  << Keep this lookup!
-#             Sort and keep K
-#             -----DONE UNTIL HERE- -------------
-#           -At this point we have K nearest sessions, need to calculate item value for each item in K sessions
-#                   - For each item in sessions: Sum up all session distances (if item in session n)
-#                       This is a join with a DF for original session n
-#           -  Session distance x lambda thing (1 - 0.1 * max common val). Keep session distance from before?
-#               - Get a Series with all items in K sessions: Join left K sessions to items per sessions
-#               - Join with Session weight saved before.
-#               - Tricky part: What is the max weight of similar item? Join on rank with initial session,
-#               keep same items only, then keep max rank.  Use 0.01 * rank as val.
-#               - Sun all ranks * pi across items: That's the SCOORE !
+#     for each of the k sessions: Get the items, then group by item where the weight to apply is the session's max p_i
+#     score per item = Sum of session similarities for sessions that have the item.
+#     session similarities = pi_i values (where match) * (optional) lambda function
+#     !! Let's skip the lambda and just use sim
 #     !!Shortcut: Not limit to k sessions?
+#     ----------------HIGH LEVEL todos:
+#     -Finish main algo
+#     -Compare perfs pandas - cudf
+#     -Box plots of time spent on each step
+#     -Low level CUDA approach:
+#       -2D array of item to sessions
+#       -2D array of sessions to items
+#       -Accumulator "output" out_s array of sessions to consider (Size N_Sessions ? Can it be optimized)
+#       -Accumulator "output" out_i array of Items to consider (Size N_items ? Can it be optimized)
+#       -3D kernel grid: Item x Session x Item = 2 x 500 x 100 (x, y, z)
+#       -For each thread: If within bounds, and item z == item x, add weight f(y) to session accumulator out_s
+#       -Keep top K sessions in out_s. Sort?
+#       -Create accumulator for items in  sessions (size K * z ?)
+#       -New kernel y * z: if out_s[y] > threshold(K), increment weight of out_i[z] by out_s[y]
+#       -out_s contains items we are looking for. sort it
+
 
 

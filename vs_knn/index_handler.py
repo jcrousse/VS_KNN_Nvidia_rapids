@@ -3,6 +3,7 @@ import cudf
 
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY, ITEM_POSITION
 
+
 class IndexHander:
     def __init__(self, config_file='config.json'):
         with open(config_file, 'r') as f:
@@ -14,6 +15,8 @@ class IndexHander:
         self.data_sources = project_config['data_sources']
         self.index_storage = project_config['index_storage']
 
+        self.item_position_column = project_config['item_position_column']
+
         self.session_index = None
         self.item_index = None
 
@@ -22,7 +25,8 @@ class IndexHander:
                            names=[SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY])
         self.session_index = self._top_items_per_sessions(df)
         self.item_index = self._top_sessions_per_items(df)
-        self.save_indices()
+        if save:
+            self.save_indices()
 
     def load_indices(self):
         self.session_index = cudf.read_csv(self.index_storage['session_index'],
@@ -36,7 +40,8 @@ class IndexHander:
 
     def _top_items_per_sessions(self, df,):
         df = self._select_top_rows(df, self.items_per_session, SESSION_ID, TIMESTAMP, ITEM_ID)
-        df = self._calculate_item_pos(df)
+        if self.item_position_column:
+            df = self._calculate_item_pos(df)
         df = df.drop(columns=[TIMESTAMP])
         df = df.set_index(SESSION_ID)
         return df
