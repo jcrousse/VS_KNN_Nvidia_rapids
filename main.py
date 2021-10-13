@@ -49,26 +49,8 @@ def step2_get_sessions_per_items(query_items, query_df):
     """For each item in query get past sessions containing the item.
     Returns dataframe with item_id (index) corresponding session_id and pi_i value"""
     past_sessions = vs_knn_indices.item_index.loc[query_items]
-    items_sessions_pi = step_21_join(past_sessions, query_df)
+    items_sessions_pi = past_sessions.join(query_df)
     return items_sessions_pi
-
-
-def step_21_join(df1, df2):
-    return df1.join(df2)
-
-
-def step3_tbd(items_sessions_pi):
-    """group item - session - pi_i by session to get the total similarity (pi_i) per session"""
-    session_pi = items_sessions_pi.set_index(SESSION_ID)
-    session_to_items = vs_knn_indices.session_index.loc[session_pi.index]
-    sess_item_pos[PI_I] = sess_item_pos['item_position'] * 0
-    return sess_item_pos
-
-
-def step4_topk(sess_item_pos, session_items):
-    sessions_w_intersection = sess_item_pos[sess_item_pos[ITEM_ID].isin(session_items)]
-    sessions_w_intersection = sessions_w_intersection.reset_index()
-    return step3_keep_topk(sessions_w_intersection)
 
 
 def step3_keep_topk(df):
@@ -104,9 +86,6 @@ for idx, user_session in enumerate(examples_100):
 
 print("average duration: ", np.average(timus), " milliseconds")
 print("p90 duration: ", np.percentile(timus, 90), " milliseconds")
-stopus = 1
-
-
 
 
 
