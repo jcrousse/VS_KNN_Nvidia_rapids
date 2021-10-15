@@ -1,6 +1,7 @@
 # VS-KNN: Pandas vs cuDF performance comparison
 
 ### How to run the code:
+* [conda environment](https://github.com/NVIDIA-Merlin/NVTabular/blob/main/conda/environments/nvtabular_dev_cuda11.2.yml)
 * get the `yoochoose-clicks.dat` public dataset.
 * Set the path to the file as `data_sources.full_data` value in `config.json`
 * run:
