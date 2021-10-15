@@ -4,7 +4,7 @@ import cudf
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY, ITEM_POSITION
 
 
-class IndexHander:
+class IndexBuilder:
     def __init__(self, config_file='config.json'):
         with open(config_file, 'r') as f:
             project_config = json.load(f)
