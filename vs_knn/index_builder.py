@@ -1,11 +1,12 @@
 import json
 import cudf
+import pandas as pd
 
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY, ITEM_POSITION
 
 
 class IndexBuilder:
-    def __init__(self, config_file='config.json'):
+    def __init__(self, config_file='config.json', no_cudf=False):
         with open(config_file, 'r') as f:
             project_config = json.load(f)
         
@@ -20,8 +21,12 @@ class IndexBuilder:
         self.session_index = None
         self.item_index = None
 
+        self.cudf = cudf
+        if no_cudf:
+            self.cudf = pd
+
     def create_indices(self, dataset='train_data', save=True):
-        df = cudf.read_csv(self.data_sources[dataset],
+        df = self.cudf.read_csv(self.data_sources[dataset],
                            names=[SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY])
         self.session_index = self._top_items_per_sessions(df)
         self.item_index = self._top_sessions_per_items(df)
@@ -29,10 +34,10 @@ class IndexBuilder:
             self.save_indices()
 
     def load_indices(self):
-        self.session_index = cudf.read_csv(self.index_storage['session_index'],
-                                           index_col=SESSION_ID)
-        self.item_index = cudf.read_csv(self.index_storage['item_index'],
-                                        index_col=ITEM_ID)
+        self.session_index = self.cudf.read_csv(self.index_storage['session_index'],
+                                                index_col=SESSION_ID)
+        self.item_index = self.cudf.read_csv(self.index_storage['item_index'],
+                                             index_col=ITEM_ID)
 
     def save_indices(self):
         self.session_index.to_csv(self.index_storage['session_index'])

@@ -7,15 +7,18 @@ from vs_knn.train_test_split import train_test_split
 
 
 class VsKnnModel:
-    def __init__(self, config_file='config.json'):
+    def __init__(self, config_file='config.json', no_cudf=False):
         self.config_file = config_file
 
         with open('config.json', 'r') as f:
             project_config = json.load(f)
         self.config = project_config
         self.top_k = self.config.get('top_k', 100)
+        self.index_builder = IndexBuilder(config_file=self.config_file, no_cudf=no_cudf)
 
-        self.index_builder = IndexBuilder(config_file=self.config_file)
+        self.cudf = cudf
+        if no_cudf:
+            self.cudf = pd
 
     def train(self):
         self.index_builder.create_indices()
@@ -45,13 +48,12 @@ class VsKnnModel:
         test_examples = {k: v['item'][0:self.config['items_per_session']] for k, v in test_examples.items()}
         return test_examples
 
-    @staticmethod
-    def _step1_query_to_cudf(session_items):
+    def _step1_query_to_cudf(self, session_items):
         """Convert session data to"""
         n_items = len(session_items)
         pi_i = [e / n_items for e in range(n_items, 0, -1)]
-        session_df = cudf.DataFrame({'pi_i': pi_i},
-                                    index=session_items)
+        session_df = self.cudf.DataFrame({'pi_i': pi_i},
+                                         index=session_items)
         return session_df
 
     def _step2_get_sessions_per_items(self, query_items, query_df):

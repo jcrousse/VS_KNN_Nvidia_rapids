@@ -23,7 +23,7 @@ def get_arguments():
 if __name__ == '__main__':
     train, split, predict, no_cudf = get_arguments()
 
-    model = VsKnnModel('config.json')
+    model = VsKnnModel('config.json', no_cudf)
 
     if split:
         train_test_split()
@@ -49,12 +49,6 @@ if __name__ == '__main__':
         print("average duration: ", np.average(time_per_prediction), " milliseconds")
         print("p90 duration: ", np.percentile(time_per_prediction, 90), " milliseconds")
 
-
 # Todo:
 #     -wget dataset if not present
-#     -Compare perfs pandas - cudf ?
 #     -Box plots of time spent on each step ?
-
-
-
-
