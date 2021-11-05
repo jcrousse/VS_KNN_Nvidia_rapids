@@ -27,7 +27,7 @@ class IndexBuilder:
 
     def create_indices(self, dataset='train_data', save=True):
         df = self.cudf.read_csv(self.data_sources[dataset],
-                           names=[SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY])
+                                names=[SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY])
         self.session_index = self._top_items_per_sessions(df)
         self.item_index = self._top_sessions_per_items(df)
         if save:
