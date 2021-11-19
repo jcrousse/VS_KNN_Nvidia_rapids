@@ -13,7 +13,8 @@
     "pi_i": "pi_i"
   },
   "data_sources": {
-    "full_data": "archive/yoochoose-data/yoochoose-clicks.dat",
+    "raw_data": "archive/yoochoose-data/yoochoose-clicks.dat",
+    "prep_data": "archive/yoochoose-data/yoochoose-clicks-preprocess.dat",
     "train_data": "archive/yoochoose-data/train_set.dat",
     "test_data": "archive/yoochoose-data/test_set.dat"
   },
