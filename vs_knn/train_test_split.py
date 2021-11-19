@@ -9,9 +9,9 @@ def train_test_split(config_file='config.json', test_size=5000):
     with open(config_file, 'r') as f:
         project_config = json.load(f)
 
-    full_df = pd.read_csv(project_config['data_sources']['full_data'], names=['session', '_t', 'items', '_c', ])
+    full_df = pd.read_csv(project_config['data_sources']['prep_data'], names=['session', '_t', 'items', '_c', ])
 
-    all_sessions = list(set(full_df['session'].values))
+    all_sessions = list(full_df['session'].unique())
 
     n_sessions = len(all_sessions)
     print(f"Found {n_sessions} unique sessions in the dataset")

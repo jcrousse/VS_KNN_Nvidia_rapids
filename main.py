@@ -3,6 +3,7 @@ import datetime
 import numpy as np
 from vs_knn import VsKnnModel
 from vs_knn.train_test_split import train_test_split
+from vs_knn.preprocessing import preprocess_data
 
 
 def get_arguments():
@@ -12,19 +13,24 @@ def get_arguments():
     parser.set_defaults(train=False)
     parser.add_argument('--split', '-s', dest='split', action='store_true', help="split the dataset into train/test")
     parser.set_defaults(split=False)
+    parser.add_argument('--preprocess', '-r', dest='preprocess', action='store_true',
+                        help="data preprocessing: reset session and item values to contiguous integers")
+    parser.set_defaults(preprocess=False)
     parser.add_argument('--predict', '-p', dest='predict', action='store_true', help="predict on test dataset")
     parser.set_defaults(predict=False)
     parser.add_argument('--no-cudf', '-c', dest='no_cudf', action='store_true', help="use pandas instead of cudf")
     parser.set_defaults(no_cudf=False)
     args = parser.parse_args()
-    return args.train, args.split, args.predict, args.no_cudf
+    return args.train, args.split, args.preprocess, args.predict, args.no_cudf
 
 
 if __name__ == '__main__':
-    train, split, predict, no_cudf = get_arguments()
+    train, split, preprocess, predict, no_cudf = get_arguments()
 
     model = VsKnnModel('config.json', no_cudf)
 
+    if preprocess:
+        preprocess_data()
     if split:
         train_test_split()
     if train:

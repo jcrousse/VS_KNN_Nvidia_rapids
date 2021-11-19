@@ -1,6 +1,9 @@
 import json
 import cudf
 import pandas as pd
+import cupy as cp
+import gc
+import numpy as np
 
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY, ITEM_POSITION
 
@@ -25,9 +28,18 @@ class IndexBuilder:
         if no_cudf:
             self.cudf = pd
 
-    def create_indices(self, dataset='train_data', save=True):
+    def create_indices(self, dataset='train_data', save=True, max_sessions=None):
         df = self.cudf.read_csv(self.data_sources[dataset],
-                                names=[SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY])
+                                names=[SESSION_ID, TIMESTAMP, ITEM_ID],
+                                dtype={
+                                    SESSION_ID: cp.dtype('int32'),
+                                    TIMESTAMP: cp.dtype('O'),
+                                    ITEM_ID: cp.dtype('int32')
+                                },
+                                usecols=[0, 1, 2]
+                                )
+        if max_sessions:
+            df = df[df[SESSION_ID] < max_sessions]
         self.session_index = self._top_items_per_sessions(df)
         self.item_index = self._top_sessions_per_items(df)
         if save:
@@ -70,7 +82,30 @@ class IndexBuilder:
         df['cum_count'] = df.groupby(group_key).cumcount()
         df = df.drop_duplicates(subset=[group_key, sort_col1])
         df = df.loc[df.cum_count < num_keep]
-        df = df.drop(columns=[CATEGORY, 'cum_count'])
+        df = df.drop(columns=['cum_count'])
         return df
-        
+
+    def get_index_as_table(self, index='item'):
+        idx_df = self.session_index
+        idx_name, col_name = ITEM_ID, SESSION_ID
+        if index == 'session':
+            idx_df = self.item_index
+            idx_name, col_name = SESSION_ID, ITEM_ID
+        idx_df = idx_df.reset_index().drop_duplicates()
+        idx_df = idx_df.sort_values(by=[idx_name, col_name], ascending=[True, True])
+        idx_df = idx_df.reset_index()
+        cum_count_col = idx_df.groupby(idx_name).cumcount().astype(int)
+        idx_df[ITEM_POSITION] = cum_count_col
+        reshaped_df = idx_df.pivot(index=idx_name, columns=ITEM_POSITION, values=[col_name])
+        reshaped_df = self._expand_table(reshaped_df)
+        del idx_df, cum_count_col
+        gc.collect()
+        reshaped_df = reshaped_df.fillna(-1)
+        return reshaped_df.values
+
+    @staticmethod
+    def _expand_table(table):
+        max_value = max(table.index.values)
+        empty_sized_table = cudf.DataFrame(index=cp.arange(max_value))
+        return empty_sized_table.join(table)
 

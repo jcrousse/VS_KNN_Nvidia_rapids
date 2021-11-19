@@ -4,7 +4,7 @@ from cupyx.time import repeat
 
 """
 Fast, 
-but the timz taken grows linearly with the n_sessions, and it gets slow pretty quick.
+but the time taken grows linearly with the n_sessions, and it gets slow pretty quick.
 The output vector _weighted_sum has the length of the number of sessions, and just allocating it gets slow.
 We can expect the number of sessions to grow in the millions, while only a small fraction of those are in scope
 for one request.
@@ -13,12 +13,12 @@ So, next step is to get some kind of mapping to a smaller subset of session.
 """
 
 n_items = 20000
-n_sessions = 1000
-current_session_len = 3
-items_per_h_sessions = 5000
+n_sessions = 50000
+current_session_len = 10
+sessions_per_h_item = 1000
 
 xp = cp
-item_to_sessions = xp.random.randint(0, n_sessions, (n_items, items_per_h_sessions), dtype=cp.intc)
+item_to_sessions = xp.random.randint(0, n_sessions, (n_items, sessions_per_h_item), dtype=cp.intc)
 example_session = xp.random.randint(0, n_items, current_session_len)
 
 # kernel; out array = n_sessions rows and items_in_session cols.
@@ -33,7 +33,7 @@ relevant_slice = item_to_sessions[current_session, :]
 n_blocks_x = int(relevant_slice.shape[1] / 16) + 1
 n_blocks_y = int(relevant_slice.shape[0] / 16) + 1
 
-
+# todo: tests if faster when inserting & skipping zeroes
 weighted_count_kernel = cp.RawKernel(r'''
 extern "C" __global__
 void weighted_count_kernel(const int* sessions, const float* weight, const int* unique_sessions,  
@@ -66,8 +66,9 @@ weighted_sum = cp.zeros((10,), dtype=np.float32)
 weighted_count_kernel((n_blocks_x, n_blocks_y, n_blocks_z),
                       (16, 16, 4),
                       (relevant_slice, weights, unique_sessions, n_unique_sessions, current_session_len,
-                       items_per_h_sessions, weighted_sum))
+                       sessions_per_h_item, weighted_sum))
 # print(weighted_sum)
+
 
 def prep_stuff(_relevant_slice):
     unique_sessions = cp.unique(_relevant_slice)
@@ -75,21 +76,21 @@ def prep_stuff(_relevant_slice):
     # n_blocks_z = int(n_unique_sessions / 4) + 1
     # _weighted_sum = cp.zeros((n_unique_sessions,), dtype=np.float32)
 
+
 print(repeat(prep_stuff, (relevant_slice,), n_repeat=1000))
+
 
 def num_count(_relevant_slice, _weights, _current_session_len, _items_per_h_sessions):
     unique_sessions = cp.unique(_relevant_slice)
     n_unique_sessions = len(unique_sessions)
-
     n_blocks_z = int(n_unique_sessions / 4) + 1
-
     _weighted_sum = cp.zeros((n_unique_sessions,), dtype=np.float32)
     weighted_count_kernel(
         (n_blocks_x, n_blocks_y, n_blocks_z),
-        (16, 16, 4),  # todo: can squeeze more perfs here with actual value instead of 1024 if less than 1024
+        (16, 16, 4),
         (_relevant_slice, _weights, unique_sessions, n_unique_sessions, _current_session_len, _items_per_h_sessions, _weighted_sum))
 
-print(repeat(num_count, (relevant_slice, weights, current_session_len, items_per_h_sessions), n_repeat=10))
+print(repeat(num_count, (relevant_slice, weights, current_session_len, sessions_per_h_item), n_repeat=10))
 
 
 # def unique_values(_matrix_slice):
@@ -104,7 +105,7 @@ print(repeat(num_count, (relevant_slice, weights, current_session_len, items_per
 
 """
 Conclusion:
-Kerel much slower in 3D BUUUUT much faster with optimized values.
-Now time taken grows with items_per_h_sessions
-3379.424 us for items_per_h_sessions == 5000
+Kerel much slower in 3D
+Now time taken grows with sessions_per_h_item
+3379.424 us for sessions_per_h_item == 5000
 """
