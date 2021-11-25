@@ -62,7 +62,7 @@ weighted_sum = cp.zeros((10,), dtype=np.float32)
 weighted_count_kernel((n_blocks_x, n_blocks_y),
                       (32, 32),
                       (relevant_slice, weights, current_session_len, items_per_h_sessions, weighted_sum))
-# print(relevant_slice)
+# print(word_matrix)
 
 def num_count(_relevant_slice, _weights, _current_session_len, _items_per_h_sessions):
     _weighted_sum = cp.zeros((n_sessions,), dtype=np.float32)

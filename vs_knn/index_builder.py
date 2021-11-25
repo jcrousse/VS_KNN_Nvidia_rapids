@@ -1,4 +1,3 @@
-import json
 import cudf
 import pandas as pd
 import cupy as cp
@@ -8,9 +7,7 @@ from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION
 
 
 class IndexBuilder:
-    def __init__(self, config_file='config.json', no_cudf=False):
-        with open(config_file, 'r') as f:
-            project_config = json.load(f)
+    def __init__(self, project_config, no_cudf=False):
         
         self.items_per_session = project_config['items_per_session']
         self.sessions_per_item = project_config['sessions_per_item']
@@ -99,7 +96,7 @@ class IndexBuilder:
         reshaped_df = self._expand_table(reshaped_df)
         del idx_df, cum_count_col
         gc.collect()
-        reshaped_df = reshaped_df.fillna(-1)
+        reshaped_df = reshaped_df.fillna(0)
         return reshaped_df.values
 
     @staticmethod

@@ -1,1 +1,1 @@
-from vs_knn.vs_knn import VsKnnModel
+from vs_knn.vs_knn import VsKnnModel, DataframeVsKnnModel

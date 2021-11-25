@@ -1,54 +1,19 @@
 import cupy as cp
-import numpy as np
+import json
+from vs_knn.weighted_word_count import weighted_word_count
 from vs_knn.index_builder import IndexBuilder
 from cupyx.time import repeat
 
 
-weighted_wordcount_kernel = cp.RawKernel(r'''
-extern "C" __global__
-void weighted_wordcount_kernel(const int* sessions, const float* weight, const int* unique_sessions,  
-                            const int n_unique_sessions, 
-                            const int n_items, const int n_sessions,  float* y) {
-                            
-    int col = blockDim.x * blockIdx.x + threadIdx.x;
-    int row = blockDim.y * blockIdx.y + threadIdx.y;
-    int s_id = blockDim.z * blockIdx.z + threadIdx.z;
-
-    if (row < n_items && col < n_sessions && s_id < n_unique_sessions){
-        int session_id = sessions[(row * n_sessions + col)];
-        if (session_id != -1 && session_id == unique_sessions[s_id]){
-            atomicAdd(&y[s_id], weight[row]);
-        }
-   }
-}
-''', 'weighted_wordcount_kernel')
-
-
-def num_count(relevant_slice, weights, current_session_len, sessions_per_items):
-    n_blocks_x = int(relevant_slice.shape[1] / 16) + 1
-    n_blocks_y = int(relevant_slice.shape[0] / 16) + 1
-    unique_sessions = cp.unique(relevant_slice)
-    if unique_sessions[0] == -1:
-        unique_sessions = unique_sessions[1:]
-    n_unique_sessions = len(unique_sessions)
-    n_blocks_z = int(n_unique_sessions / 4) + 1
-    weighted_sum = cp.zeros((n_unique_sessions,), dtype=np.float32)
-    weighted_wordcount_kernel(
-        (n_blocks_x, n_blocks_y, n_blocks_z),
-        (16, 16, 4),
-        (relevant_slice, weights, unique_sessions, n_unique_sessions, current_session_len, sessions_per_items, weighted_sum))
-    return unique_sessions, weighted_sum
-
-
 def vs_knn_predict(session, weights):
     item_slice = ITEM_TO_SESSIONS[session]
-    unique_sessions, w_sum_sessions = num_count(item_slice, weights, len(session), SESSIONS_PER_ITEM)
-    if unique_sessions:  # todo: some items have no historical sessions? 31, 287
+    unique_sessions, w_sum_sessions = weighted_word_count(item_slice, weights)
+    if len(unique_sessions) > 0:  # todo: some items have no historical sessions? 31, 287
         if len(unique_sessions) > K_SESSIONS:
             # sort and select top K
             print("todo: implement sort & select here")
         session_slice = SESSION_TO_ITEMS[unique_sessions]
-        unique_items, w_sum_items = num_count(session_slice, w_sum_sessions, len(unique_sessions), ITEMS_PER_SESSION)
+        unique_items, w_sum_items = weighted_word_count(session_slice, w_sum_sessions)
         return unique_items, w_sum_items
 
 
@@ -61,8 +26,12 @@ def run_random_test():
     return items, scores
 
 
-index_builder = IndexBuilder()
-MAX_SESSIONS = 100000  # saving memory
+with open('config.json', 'r') as f:
+    project_config = json.load(f)
+
+
+index_builder = IndexBuilder(project_config)
+MAX_SESSIONS = 1000  # saving memory
 MAX_SESSION_LEN = 100
 K_SESSIONS = 100
 index_builder.create_indices('train_data', save=False, max_sessions=MAX_SESSIONS)

@@ -1,7 +1,8 @@
 import argparse
 import datetime
+import json
 import numpy as np
-from vs_knn import VsKnnModel
+from vs_knn import DataframeVsKnnModel
 from vs_knn.train_test_split import train_test_split
 from vs_knn.preprocessing import preprocess_data
 
@@ -27,10 +28,13 @@ def get_arguments():
 if __name__ == '__main__':
     train, split, preprocess, predict, no_cudf = get_arguments()
 
-    model = VsKnnModel('config.json', no_cudf)
+    with open('config.json', 'r') as f:
+        project_config = json.load(f)
+
+    model = DataframeVsKnnModel(project_config, no_cudf)
 
     if preprocess:
-        preprocess_data()
+        preprocess_data(project_config)
     if split:
         train_test_split()
     if train:
