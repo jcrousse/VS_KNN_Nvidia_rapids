@@ -4,9 +4,9 @@ from vs_knn.index_builder import IndexBuilder
 from cupyx.time import repeat
 
 
-weighted_count_kernel = cp.RawKernel(r'''
+weighted_wordcount_kernel = cp.RawKernel(r'''
 extern "C" __global__
-void weighted_count_kernel(const int* sessions, const float* weight, const int* unique_sessions,  
+void weighted_wordcount_kernel(const int* sessions, const float* weight, const int* unique_sessions,  
                             const int n_unique_sessions, 
                             const int n_items, const int n_sessions,  float* y) {
                             
@@ -21,7 +21,7 @@ void weighted_count_kernel(const int* sessions, const float* weight, const int* 
         }
    }
 }
-''', 'weighted_count_kernel')
+''', 'weighted_wordcount_kernel')
 
 
 def num_count(relevant_slice, weights, current_session_len, sessions_per_items):
@@ -33,7 +33,7 @@ def num_count(relevant_slice, weights, current_session_len, sessions_per_items):
     n_unique_sessions = len(unique_sessions)
     n_blocks_z = int(n_unique_sessions / 4) + 1
     weighted_sum = cp.zeros((n_unique_sessions,), dtype=np.float32)
-    weighted_count_kernel(
+    weighted_wordcount_kernel(
         (n_blocks_x, n_blocks_y, n_blocks_z),
         (16, 16, 4),
         (relevant_slice, weights, unique_sessions, n_unique_sessions, current_session_len, sessions_per_items, weighted_sum))

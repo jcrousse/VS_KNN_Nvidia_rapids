@@ -1,4 +1,4 @@
-# This is a one-off process to create a train and a test split of sessions.
+# This is a one-off process to create a train and a tests split of sessions.
 # We don't bother optimizing it, just basic pandas / sklearn is enough
 import json
 import random

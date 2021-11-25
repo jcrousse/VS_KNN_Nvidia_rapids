@@ -3,9 +3,8 @@ import cudf
 import pandas as pd
 import cupy as cp
 import gc
-import numpy as np
 
-from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY, ITEM_POSITION
+from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION
 
 
 class IndexBuilder:
