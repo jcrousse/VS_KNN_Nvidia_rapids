@@ -1,17 +1,13 @@
-import json
 import cudf
 import pandas as pd
 import cupy as cp
 import gc
-import numpy as np
 
-from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY, ITEM_POSITION
+from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION
 
 
 class IndexBuilder:
-    def __init__(self, config_file='config.json', no_cudf=False):
-        with open(config_file, 'r') as f:
-            project_config = json.load(f)
+    def __init__(self, project_config, no_cudf=False):
         
         self.items_per_session = project_config['items_per_session']
         self.sessions_per_item = project_config['sessions_per_item']
@@ -85,11 +81,17 @@ class IndexBuilder:
         df = df.drop(columns=['cum_count'])
         return df
 
-    def get_index_as_table(self, index='item'):
-        idx_df = self.session_index
+    def get_index_as_array(self, index='item'):
+        reshaped_df = self._reshape_index(index)
+        reshaped_df = self._expand_table(reshaped_df)
+        reshaped_df = reshaped_df.fillna(0)
+        return reshaped_df.values
+
+    def _reshape_index(self, index='item'):
+        idx_df = self.item_index
         idx_name, col_name = ITEM_ID, SESSION_ID
         if index == 'session':
-            idx_df = self.item_index
+            idx_df = self.session_index
             idx_name, col_name = SESSION_ID, ITEM_ID
         idx_df = idx_df.reset_index().drop_duplicates()
         idx_df = idx_df.sort_values(by=[idx_name, col_name], ascending=[True, True])
@@ -97,15 +99,33 @@ class IndexBuilder:
         cum_count_col = idx_df.groupby(idx_name).cumcount().astype(int)
         idx_df[ITEM_POSITION] = cum_count_col
         reshaped_df = idx_df.pivot(index=idx_name, columns=ITEM_POSITION, values=[col_name])
-        reshaped_df = self._expand_table(reshaped_df)
+
         del idx_df, cum_count_col
         gc.collect()
-        reshaped_df = reshaped_df.fillna(-1)
-        return reshaped_df.values
+
+        return reshaped_df
 
     @staticmethod
     def _expand_table(table):
         max_value = max(table.index.values)
         empty_sized_table = cudf.DataFrame(index=cp.arange(max_value))
         return empty_sized_table.join(table)
+
+    def get_cudf_index(self, index='item'):
+        reshaped_df = self._reshape_index(index)
+        return CudfIndex(reshaped_df)
+
+
+class CudfIndex:
+    """
+    slower than CuPy array as index, but less memory-hungry
+    """
+    def __init__(self, index_df):
+        self.index_df = index_df.fillna(0)
+        self.shape = self.index_df.shape
+
+    def __getitem__(self, item):
+        if item.size == 1:
+            item = [item]
+        return self.index_df.loc[item, :].values
 
