@@ -8,10 +8,10 @@ void weighted_wordcount_kernel(
                             const int* word_matrix, 
                             const float* weight, 
                             const int* unique_words,  
-                            const int n_unique_words, 
                             const int num_rows, 
                             const int num_cols,  
-                            float* y) {
+                            const int n_unique_words, 
+                            float* weighted_count) {
 
     int row = blockDim.x * blockIdx.x + threadIdx.x;
     int col = blockDim.y * blockIdx.y + threadIdx.y;
@@ -20,7 +20,7 @@ void weighted_wordcount_kernel(
     if (row < num_rows && col < num_cols && word_id < n_unique_words){
         int word = word_matrix[(row * num_cols + col)];
         if (word != 0 && word == unique_words[word_id]){
-            atomicAdd(&y[word_id], weight[row]);
+            atomicAdd(&weighted_count[word_id], weight[row]);
         }
    }
 }
@@ -33,6 +33,10 @@ def weighted_word_count(word_matrix, row_weights):
     :param row_weights: One weight value per row in the matrix. Words found in row i count for a weight row_weights|i]
     :return: Two vectors: The unique words found in the word matrix, and the weighted count of each word
     """
+    if word_matrix.ndim == 1:
+        word_matrix = cp.reshape(word_matrix, (1, word_matrix.shape[0]))
+    elif word_matrix.ndim != 2:
+        raise ValueError("word_matrix must be a 1-D or 2-D array")
     num_rows, num_cols = word_matrix.shape
     n_blocks_x = int(num_rows / 16) + 1
     n_blocks_y = int(num_cols / 16) + 1
@@ -45,6 +49,6 @@ def weighted_word_count(word_matrix, row_weights):
     weighted_wordcount_kernel(
         (n_blocks_x, n_blocks_y, n_blocks_z),
         (16, 16, 4),
-        (word_matrix, row_weights, unique_words, n_unique_words, num_rows, num_cols, weighted_count)
+        (word_matrix, row_weights, unique_words, num_rows, num_cols, n_unique_words, weighted_count)
     )
     return unique_words, weighted_count
