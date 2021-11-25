@@ -1,5 +1,6 @@
 import pandas as pd
 import cudf
+import cupy as cp
 from vs_knn.col_names import SESSION_ID, ITEM_ID, PI_I
 from vs_knn.index_builder import IndexBuilder
 from vs_knn.weighted_word_count import weighted_word_count
@@ -16,13 +17,13 @@ class VsKnnModel:
     def _step1_ingest_query(self, session_items):
         raise NotImplementedError
 
-    def _step2_get_session_similarities(self, query):
+    def get_session_similarities(self, query):
         raise NotImplementedError
 
     def _step3_keep_topk_sessions(self, session_items):
         raise NotImplementedError
 
-    def _step4_get_item_similarities(self, sessions, session_similarities):
+    def get_item_similarities(self, sessions, session_similarities):
         raise NotImplementedError
 
 
@@ -36,30 +37,26 @@ class CupyVsKnnModel(VsKnnModel):
         self.positional_weights = positional_weights
 
     def predict(self, query_items):
-        sessions, session_similarities = self._step2_get_session_similarities(query_items)
-        if len(sessions) > 0:
-            if len(sessions) > self.top_k:
-                sessions, session_similarities = self._step3_keep_topk(sessions, session_similarities)
-            unique_items, w_sum_items = self._step4_get_item_similarities(sessions, session_similarities)
-            return unique_items, w_sum_items
-        else:
-            # todo: some items have no historical sessions? 31, 287
-            print("why do we have items with no historical sessions?")
+        sessions, session_similarities = self.get_session_similarities(query_items)
+        if len(sessions) > self.top_k:
+            sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
+        unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
+        return unique_items, w_sum_items
 
     def _step1_ingest_query(self, query_items):
         pass
 
-    def _step2_get_session_similarities(self, query):
+    def get_session_similarities(self, query):
         item_slice = self.item_to_sessions[query]
         weights_slice = self.positional_weights[-len(query):]
         sessions, session_similarities = weighted_word_count(item_slice, weights_slice)
         return sessions, session_similarities
 
-    def _step3_keep_topk(self, sessions, session_similarities):
-        # TODO
-        raise NotImplementedError
+    def keep_topk_sessions(self, sessions, session_similarities):
+        selection = cp.argsort(session_similarities)[0:self.top_k]
+        return sessions[selection], session_similarities[selection]
 
-    def _step4_get_item_similarities(self, sessions, session_similarities):
+    def get_item_similarities(self, sessions, session_similarities):
         session_slice = self.session_to_items[sessions]
         unique_items, w_sum_items = weighted_word_count(session_slice, session_similarities)
         return unique_items, w_sum_items
@@ -87,7 +84,7 @@ class DataframeVsKnnModel(VsKnnModel):
 
     def predict(self, query_items):
         query_df = self._step1_ingest_query(query_items)
-        items_sessions_pi = self._step2_get_session_similarities(query_df)
+        items_sessions_pi = self.get_session_similarities(query_df)
         top_k_sessions = self._step3_keep_topk_sessions(items_sessions_pi)
         item_scores = self._step4_get_item_similarities_df(top_k_sessions)
         return item_scores
@@ -112,7 +109,7 @@ class DataframeVsKnnModel(VsKnnModel):
                                          index=session_items)
         return session_df
 
-    def _step2_get_session_similarities(self, query_df):
+    def get_session_similarities(self, query_df):
         """For each item in query get past sessions containing the item.
         Returns dataframe with item_id (index) corresponding session_id and pi_i value"""
         past_sessions = self.index_builder.item_index.loc[query_df.index]
@@ -131,5 +128,5 @@ class DataframeVsKnnModel(VsKnnModel):
         item_scores = sessions_with_items.groupby(ITEM_ID).agg({PI_I: 'sum'})
         return item_scores
 
-    def _step4_get_item_similarities(self, sessions, session_similarities):
+    def get_item_similarities(self, sessions, session_similarities):
         raise NotImplementedError

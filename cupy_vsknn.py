@@ -1,22 +1,26 @@
 import cupy as cp
+import cudf
 import json
 from vs_knn import CupyVsKnnModel
 from vs_knn.index_builder import IndexBuilder
 from cupyx.time import repeat
-
+from tqdm import tqdm
 
 if __name__ == '__main__':
     with open('config.json', 'r') as f:
         project_config = json.load(f)
 
     index_builder = IndexBuilder(project_config)
-    MAX_SESSIONS = 1000  # saving memory
+    MAX_SESSIONS = 1000000  # saving memory
     MAX_SESSION_LEN = 100
     K_SESSIONS = 100
+
     index_builder.create_indices('train_data', save=False, max_sessions=MAX_SESSIONS)
 
-    SESSION_TO_ITEMS = index_builder.get_index_as_table('session')
-    ITEM_TO_SESSIONS = index_builder.get_index_as_table('item')
+    SESSION_TO_ITEMS = index_builder.get_index_as_array('session')
+    ITEM_TO_SESSIONS = index_builder.get_index_as_array('item')
+    # SESSION_TO_ITEMS = index_builder.get_cudf_index('session')
+    # ITEM_TO_SESSIONS = index_builder.get_cudf_index('item')
 
     ITEMS_PER_SESSION = SESSION_TO_ITEMS.shape[1]
     SESSIONS_PER_ITEM = ITEM_TO_SESSIONS.shape[1]
@@ -27,9 +31,12 @@ if __name__ == '__main__':
     def run_random_test():
         random_session_id = cp.random.randint(0, MAX_SESSIONS)
         session = SESSION_TO_ITEMS[random_session_id]
-        session_clean = session[cp.where(session > -1)]
+        session_clean = session[cp.where(session > 0)]
         items, scores = model.predict(session_clean)
         return items, scores
 
+    print(repeat(run_random_test, n_repeat=100))
 
-    print(repeat(run_random_test, n_repeat=1000))
+
+
+
