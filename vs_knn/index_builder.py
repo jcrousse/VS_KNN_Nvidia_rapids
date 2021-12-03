@@ -2,6 +2,7 @@ import cudf
 import pandas as pd
 import cupy as cp
 import gc
+from multiprocessing import Pool, cpu_count
 
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION
 
@@ -118,7 +119,15 @@ class IndexBuilder:
     def get_unique_sessions(self):
         return self.session_index.index.unique().values
 
+    def get_dict_index(self, index='item'):
+        idx_df, target_size = self.item_index, self.sessions_per_item
+        if index == 'session':
+            idx_df, target_size = self.session_index, self.items_per_session
 
+        renamed_df = idx_df.reset_index()
+        renamed_df.columns = ['key', 'value']
+
+        return DictIndex(renamed_df, target_size, index)
 
 
 class CudfIndex:
@@ -133,3 +142,38 @@ class CudfIndex:
         if item.size == 1:
             item = [item]
         return cp.array(self.index_df.loc[item, :].values)
+
+
+def whatever_function(p_list):
+    return p_list
+
+
+def list_to_cp(p_list):
+    return cp.pad(cp.array(p_list), (0, 10))
+
+
+class DictIndex:
+    def __init__(self, data_df, array_size, name):
+        import pickle
+        import os
+
+        # stored_idx_pkl = name + '.plk'
+        # if not os.path.isfile(stored_idx_pkl):
+
+        array_per_key = data_df \
+            .groupby('key') \
+            .agg({'value': 'collect'}) \
+            .to_pandas()\
+            .to_dict(orient='index')
+
+        processed_arrays = {k: cp.pad(cp.array(v['value']), (0, array_size))
+                            for k, v in array_per_key.items()}
+        # with open(stored_idx_pkl, 'w') as f:
+        #     pickle.dump(processed_arrays, f)
+
+        self.data_arrays = processed_arrays
+        self.shape = (0, len(self.data_arrays))
+
+    def __getitem__(self, item):
+        # todo: something better than a list comprehension loop here
+        return cp.vstack([self.data_arrays[e] for e in item.tolist()])

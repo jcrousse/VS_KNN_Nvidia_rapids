@@ -17,7 +17,7 @@ if __name__ == '__main__':
         project_config = json.load(f)
 
     index_builder = IndexBuilder(project_config)
-    MAX_SESSIONS = 1000  # use value such as 10 ** 6 to save memory
+    MAX_SESSIONS = None  # use value such as 10 ** 6 to save memory
     MAX_SESSION_LEN = 100
     K_SESSIONS = 100
 
@@ -26,8 +26,10 @@ if __name__ == '__main__':
 
     # SESSION_TO_ITEMS = index_builder.get_index_as_array('session')
     # ITEM_TO_SESSIONS = index_builder.get_index_as_array('item')
-    SESSION_TO_ITEMS = index_builder.get_cudf_index('session')
-    ITEM_TO_SESSIONS = index_builder.get_cudf_index('item')
+    SESSION_TO_ITEMS = index_builder.get_dict_index('session')
+    ITEM_TO_SESSIONS = index_builder.get_dict_index('item')
+    # SESSION_TO_ITEMS = index_builder.get_cudf_index('session')
+    # ITEM_TO_SESSIONS = index_builder.get_cudf_index('item')
 
     ITEMS_PER_SESSION = SESSION_TO_ITEMS.shape[1]
     SESSIONS_PER_ITEM = ITEM_TO_SESSIONS.shape[1]
