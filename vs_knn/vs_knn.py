@@ -27,14 +27,25 @@ class VsKnnModel:
         raise NotImplementedError
 
 
+def linear_decay(n):
+    return (cp.arange(0, n, dtype=cp.float32) + 1) / n
+
+
+def no_decay(n):
+    return cp.ones(n, dtype=cp.float32)
+
+
 class CupyVsKnnModel(VsKnnModel):
-    def __init__(self, project_config, item_index, session_index, positional_weights):
+    def __init__(self, project_config, item_index, session_index, decay='linear'):
         super().__init__(project_config)
 
         self.item_to_sessions = item_index
         self.session_to_items = session_index
 
-        self.positional_weights = positional_weights
+        if decay == 'linear':
+            self.weight_function = linear_decay
+        else:
+            self.weight_function = no_decay
 
     def predict(self, query_items):
         sessions, session_similarities = self.get_session_similarities(query_items)
@@ -48,7 +59,7 @@ class CupyVsKnnModel(VsKnnModel):
 
     def get_session_similarities(self, query):
         item_slice = self.item_to_sessions[query]
-        weights_slice = self.positional_weights[-len(query):]
+        weights_slice = self.weight_function(len(query))
         sessions, session_similarities = weighted_word_count(item_slice, weights_slice)
         return sessions, session_similarities
 

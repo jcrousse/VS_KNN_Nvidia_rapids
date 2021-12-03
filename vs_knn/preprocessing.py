@@ -19,9 +19,18 @@ def reset_values(df, column):
 def preprocess_data(project_config):
     full_df = xd.read_csv(project_config['data_sources']['raw_data'], names=['session', '_t', 'items', '_c', ])
 
-    reset_sessions = reset_values(full_df, 'session')
-    reset_sessions_items = reset_values(reset_sessions, 'items')
+    reset_ids = project_config['reset_ids']
+    if reset_ids:
+        reset_sessions = reset_values(full_df, 'session')
+        full_df = reset_values(reset_sessions, 'items')
 
-    preprocessed_df = reset_sessions_items[['session', '_t', 'items', '_c', ]]
+    full_df = get_unique_day_values(full_df)
+
+    preprocessed_df = full_df[['session', '_t', 'items', 'day', '_c', ]]
     preprocessed_df = preprocessed_df.sort_values(by=['session', '_t'])
     preprocessed_df.to_csv(project_config['data_sources']['prep_data'], index=False, header=False)
+
+
+def get_unique_day_values(df):
+    df['day'] = df['_t'].str.slice(start=0, stop=10)
+    return df

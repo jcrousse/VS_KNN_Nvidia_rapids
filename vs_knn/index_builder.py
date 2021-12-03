@@ -115,6 +115,11 @@ class IndexBuilder:
         reshaped_df = self._reshape_index(index)
         return CudfIndex(reshaped_df)
 
+    def get_unique_sessions(self):
+        return self.session_index.index.unique().values
+
+
+
 
 class CudfIndex:
     """
@@ -127,5 +132,4 @@ class CudfIndex:
     def __getitem__(self, item):
         if item.size == 1:
             item = [item]
-        return self.index_df.loc[item, :].values
-
+        return cp.array(self.index_df.loc[item, :].values)
