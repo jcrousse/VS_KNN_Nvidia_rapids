@@ -26,10 +26,10 @@ if __name__ == '__main__':
 
     # SESSION_TO_ITEMS = index_builder.get_index_as_array('session')
     # ITEM_TO_SESSIONS = index_builder.get_index_as_array('item')
-    SESSION_TO_ITEMS = index_builder.get_dict_index('session')
-    ITEM_TO_SESSIONS = index_builder.get_dict_index('item')
-    # SESSION_TO_ITEMS = index_builder.get_cudf_index('session')
-    # ITEM_TO_SESSIONS = index_builder.get_cudf_index('item')
+    # SESSION_TO_ITEMS = index_builder.get_dict_index('session')
+    # ITEM_TO_SESSIONS = index_builder.get_dict_index('item')
+    SESSION_TO_ITEMS = index_builder.get_df_index('session', 'pandas')
+    ITEM_TO_SESSIONS = index_builder.get_df_index('item', 'pandas')
 
     ITEMS_PER_SESSION = SESSION_TO_ITEMS.shape[1]
     SESSIONS_PER_ITEM = ITEM_TO_SESSIONS.shape[1]
@@ -45,7 +45,7 @@ if __name__ == '__main__':
         items, scores = model.predict(session_clean)
         return items, scores
 
-    # print(repeat(run_random_test, n_repeat=10))
+    print(repeat(run_random_test, n_repeat=100))
 
     test_set = cudf.read_csv(project_config['data_sources']['test_data'],
                              names=['session_id', 'time', 'item_id'],

@@ -2,14 +2,14 @@ import cudf
 import pandas as pd
 import cupy as cp
 import gc
-from multiprocessing import Pool, cpu_count
-
+from vs_knn.data_read_write import read_dataset
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION
 
 
 class IndexBuilder:
     def __init__(self, project_config, no_cudf=False):
-        
+
+        self.project_config = project_config
         self.items_per_session = project_config['items_per_session']
         self.sessions_per_item = project_config['sessions_per_item']
         
@@ -26,15 +26,7 @@ class IndexBuilder:
             self.cudf = pd
 
     def create_indices(self, dataset='train_data', save=True, max_sessions=None):
-        df = self.cudf.read_csv(self.data_sources[dataset],
-                                names=[SESSION_ID, TIMESTAMP, ITEM_ID],
-                                dtype={
-                                    SESSION_ID: cp.dtype('int32'),
-                                    TIMESTAMP: cp.dtype('O'),
-                                    ITEM_ID: cp.dtype('int32')
-                                },
-                                usecols=[0, 1, 2]
-                                )
+        df = read_dataset(dataset, project_config=self.project_config, reader='cudf')
         if max_sessions:
             df = df[df[SESSION_ID] < max_sessions]
         self.session_index = self._top_items_per_sessions(df)
@@ -112,9 +104,9 @@ class IndexBuilder:
         empty_sized_table = cudf.DataFrame(index=cp.arange(max_value))
         return empty_sized_table.join(table)
 
-    def get_cudf_index(self, index='item'):
+    def get_df_index(self, index='item', mode='cudf'):
         reshaped_df = self._reshape_index(index)
-        return CudfIndex(reshaped_df)
+        return DataFrameIndex(reshaped_df, mode=mode)
 
     def get_unique_sessions(self):
         return self.session_index.index.unique().values
@@ -130,15 +122,28 @@ class IndexBuilder:
         return DictIndex(renamed_df, target_size, index)
 
 
-class CudfIndex:
+class DataFrameIndex:
     """
     slower than CuPy array as index, but less memory-hungry
     """
-    def __init__(self, index_df):
+    def __init__(self, index_df: cudf.DataFrame, mode='cudf'):
         self.index_df = index_df.fillna(0)
+        self.get_function = self._get_index_using_cudf
+        if mode == 'pandas':
+            self.index_df = self.index_df.to_pandas()
+            self.get_function = self._get_index_using_pandas
         self.shape = self.index_df.shape
 
+        self.known_items = set(self.index_df.index.values)
+
     def __getitem__(self, item):
+        return self.get_function(item)
+
+    def _get_index_using_pandas(self, item):
+        item = item.tolist()
+        return cp.array(self.index_df.loc[item, :].values)
+
+    def _get_index_using_cudf(self, item):
         if item.size == 1:
             item = [item]
         return cp.array(self.index_df.loc[item, :].values)

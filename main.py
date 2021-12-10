@@ -31,12 +31,13 @@ if __name__ == '__main__':
     with open('config.json', 'r') as f:
         project_config = json.load(f)
 
-    model = DataframeVsKnnModel(project_config, no_cudf)
-
     if preprocess:
         preprocess_data(project_config)
     if split:
-        train_test_split()
+        train_test_split(project_config)
+
+    model = DataframeVsKnnModel(project_config, no_cudf)
+
     if train:
         model.train()
     else:

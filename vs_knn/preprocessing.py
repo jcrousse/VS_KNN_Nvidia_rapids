@@ -1,7 +1,9 @@
-import cudf
 import pandas as pd
+import cudf
+from vs_knn.data_read_write import read_dataset, write_dataframe
+from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, DAY
 
-xd = pd  # out of memory with cudf for the 'drop' operation on my GPU ?? using pandas instead
+xd = pd
 
 
 def reset_values(df, column):
@@ -11,26 +13,29 @@ def reset_values(df, column):
     unique_values_map.columns = [tmp_col_name, column]
     unique_values_map[tmp_col_name] = unique_values_map[tmp_col_name] + 1  # index starting at 1 so 0 is missing value
     new_values_df = df.merge(unique_values_map, on=column)
-    new_values_df = new_values_df.drop(columns=[column])
+    new_values_df = new_values_df.drop(columns=[column])  # out of memory with cudf for the 'drop' operation on my GPU ?? using pandas instead
     new_values_df = new_values_df.rename(columns={tmp_col_name: column})
     return new_values_df
 
 
 def preprocess_data(project_config):
-    full_df = xd.read_csv(project_config['data_sources']['raw_data'], names=['session', '_t', 'items', '_c', ])
+    full_df = read_dataset('raw_data', project_config, 'pandas')
 
     reset_ids = project_config['reset_ids']
     if reset_ids:
-        reset_sessions = reset_values(full_df, 'session')
-        full_df = reset_values(reset_sessions, 'items')
+        reset_sessions = reset_values(full_df, SESSION_ID)
+        full_df = reset_values(reset_sessions, ITEM_ID)
 
-    full_df = get_unique_day_values(full_df)
+    if DAY not in full_df.columns:
+        full_df = get_unique_day_values(full_df)
 
-    preprocessed_df = full_df[['session', '_t', 'items', 'day', '_c', ]]
-    preprocessed_df = preprocessed_df.sort_values(by=['session', '_t'])
-    preprocessed_df.to_csv(project_config['data_sources']['prep_data'], index=False, header=False)
+    preprocessed_df = full_df.sort_values(by=[SESSION_ID, TIMESTAMP])
+
+    write_dataframe(preprocessed_df, 'prep_data', project_config)
+
+
 
 
 def get_unique_day_values(df):
-    df['day'] = df['_t'].str.slice(start=0, stop=10)
+    df[DAY] = df[TIMESTAMP].str.slice(start=0, stop=10)
     return df
