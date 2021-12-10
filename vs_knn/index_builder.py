@@ -3,20 +3,14 @@ import pandas as pd
 import cupy as cp
 import gc
 from vs_knn.data_read_write import read_dataset
-from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION
+from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION, CATEGORY
 
 
 class IndexBuilder:
-    def __init__(self, project_config, no_cudf=False):
+    def __init__(self, items_per_session=10, sessions_per_item=5000, no_cudf=False):
 
-        self.project_config = project_config
-        self.items_per_session = project_config['items_per_session']
-        self.sessions_per_item = project_config['sessions_per_item']
-        
-        self.data_sources = project_config['data_sources']
-        self.index_storage = project_config['index_storage']
-
-        self.item_position_column = project_config['item_position_column']
+        self.items_per_session = items_per_session
+        self.sessions_per_item = sessions_per_item
 
         self.session_index = None
         self.item_index = None
@@ -25,29 +19,23 @@ class IndexBuilder:
         if no_cudf:
             self.cudf = pd
 
-    def create_indices(self, dataset='train_data', save=True, max_sessions=None):
-        df = read_dataset(dataset, project_config=self.project_config, reader='cudf')
+    def create_indices(self, train_df, max_sessions=None):
+
         if max_sessions:
-            df = df[df[SESSION_ID] < max_sessions]
-        self.session_index = self._top_items_per_sessions(df)
-        self.item_index = self._top_sessions_per_items(df)
-        if save:
-            self.save_indices()
+            train_df = train_df[train_df[SESSION_ID] < max_sessions]
+        self.session_index = self._top_items_per_sessions(train_df)
+        self.item_index = self._top_sessions_per_items(train_df)
 
     def load_indices(self):
-        self.session_index = self.cudf.read_csv(self.index_storage['session_index'],
-                                                index_col=SESSION_ID)
-        self.item_index = self.cudf.read_csv(self.index_storage['item_index'],
-                                             index_col=ITEM_ID)
+        # removed
+        pass
 
     def save_indices(self):
-        self.session_index.to_csv(self.index_storage['session_index'])
-        self.item_index.to_csv(self.index_storage['item_index'])
+        # removed
+        pass
 
     def _top_items_per_sessions(self, df,):
         df = self._select_top_rows(df, self.items_per_session, SESSION_ID, TIMESTAMP, ITEM_ID)
-        if self.item_position_column:
-            df = self._calculate_item_pos(df)
         df = df.drop(columns=[TIMESTAMP])
         df = df.set_index(SESSION_ID)
         return df

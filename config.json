@@ -2,7 +2,6 @@
   "items_per_session": 10,
   "sessions_per_item": 5000,
   "top_k": 100,
-  "item_position_column": false,
   "reset_ids": false,
   "data_schema": {
     "session_column_position": 0,

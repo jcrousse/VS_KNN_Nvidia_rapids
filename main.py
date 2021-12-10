@@ -1,10 +1,18 @@
 import argparse
-import datetime
 import json
 import numpy as np
-from vs_knn import DataframeVsKnnModel
+import cupy as cp
+import cudf
+from cupyx.time import repeat
+from vs_knn import CupyVsKnnModel
 from vs_knn.train_test_split import train_test_split
 from vs_knn.preprocessing import preprocess_data
+from vs_knn.index_builder import IndexBuilder
+from vs_knn.data_read_write import read_dataset
+from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID
+from tqdm import tqdm
+
+MAX_SESSIONS = None  # use value such as 10 ** 6 to save memory and time for development
 
 
 def get_arguments():
@@ -25,6 +33,32 @@ def get_arguments():
     return args.train, args.split, args.preprocess, args.predict, args.no_cudf
 
 
+def setup_vsknn_indices(project_config):
+    """ returns two key-value stores for session index and item index.
+    At the moment it is a simple pandas dataframe behind the scenes, but any object that returns
+    CuPy arrays should do"""
+    items_per_sessions, sessions_per_item = \
+        project_config['items_per_session'], project_config['sessions_per_item']
+    train_dataset_path = project_config['data_sources']['train_data']
+
+    train_df = cudf.read_csv(train_dataset_path,
+                             names=[SESSION_ID, TIMESTAMP, ITEM_ID],
+                             dtypes={
+                                 SESSION_ID: cp.dtype('int32'),
+                                 TIMESTAMP: cp.dtype('O'),
+                                 ITEM_ID: cp.dtype('int32'),
+                             },
+                             usecols=[0, 1, 2])
+
+    index_builder = IndexBuilder(items_per_sessions, sessions_per_item)
+    index_builder.create_indices(train_df, max_sessions=MAX_SESSIONS)
+
+    # our key-value store is simply a pandas DataFrame
+    session_index = index_builder.get_df_index('session', 'pandas')
+    item_index = index_builder.get_df_index('item', 'pandas')
+    return session_index, item_index
+
+
 if __name__ == '__main__':
     train, split, preprocess, predict, no_cudf = get_arguments()
 
@@ -36,30 +70,42 @@ if __name__ == '__main__':
     if split:
         train_test_split(project_config)
 
-    model = DataframeVsKnnModel(project_config, no_cudf)
-
-    if train:
-        model.train()
-    else:
-        model.load()
     if predict:
-        test_examples = model.get_test_dict()
 
-        examples_n = list(test_examples.keys())[0:100]
-        time_per_prediction = np.zeros(len(examples_n))
+        item_to_sessions, session_to_items = setup_vsknn_indices(project_config)
+        model = CupyVsKnnModel(item_to_sessions, session_to_items, top_k=project_config['top_k'])
 
-        for idx, user_session in enumerate(examples_n):
-            query_items = test_examples[user_session]
+        test_set = read_dataset('test_data', project_config, 'cudf')
+        test_sessions = test_set[SESSION_ID].unique().values
 
-            start = datetime.datetime.now()
-            items_scores = model.predict(query_items)
-            end = datetime.datetime.now()
-            delta = end - start
-            time_per_prediction[idx] = int(delta.total_seconds() * 1000)
+        def run_random_test():
+            """ function to run a prediction on a randomly selected session from test dataset for
+            quick speed test """
+            random_id = np.random.randint(0, len(test_sessions))
+            random_session_id = test_sessions[random_id]
+            session = session_to_items[random_session_id]
+            session_clean = session[cp.where(session > 0)]
+            items, scores = model.predict(session_clean)
+            return items, scores
 
-        print("average duration: ", np.average(time_per_prediction), " milliseconds")
-        print("p90 duration: ", np.percentile(time_per_prediction, 90), " milliseconds")
+        print(repeat(run_random_test, n_repeat=100))
 
-# Todo:
-#     -wget dataset if not present
-#     -Box plots of time spent on each step ?
+        session_to_items_test = test_set.set_index(SESSION_ID)
+
+        total_hits = 0
+        pbar = tqdm(test_sessions)
+        for n_treated, test_session in enumerate(pbar):
+            test_items = session_to_items_test.loc[test_session]['item_id'].values
+            if len(test_items) > 1:
+                x = test_items[0:-1]
+                y = test_items[-1]
+                items_pred, item_scores = model.predict(x)
+
+                selection = cp.flip(cp.argsort(item_scores)[-20:])
+                items_rec = items_pred[selection]
+
+                if y in items_rec:
+                    total_hits += 1
+                pbar.set_postfix({'HR@20': total_hits / n_treated})
+
+        print(f"HR@20: {total_hits / len(test_sessions)}")
