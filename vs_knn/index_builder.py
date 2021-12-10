@@ -2,20 +2,15 @@ import cudf
 import pandas as pd
 import cupy as cp
 import gc
-
-from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION
+from vs_knn.data_read_write import read_dataset
+from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION, CATEGORY
 
 
 class IndexBuilder:
-    def __init__(self, project_config, no_cudf=False):
-        
-        self.items_per_session = project_config['items_per_session']
-        self.sessions_per_item = project_config['sessions_per_item']
-        
-        self.data_sources = project_config['data_sources']
-        self.index_storage = project_config['index_storage']
+    def __init__(self, items_per_session=10, sessions_per_item=5000, no_cudf=False):
 
-        self.item_position_column = project_config['item_position_column']
+        self.items_per_session = items_per_session
+        self.sessions_per_item = sessions_per_item
 
         self.session_index = None
         self.item_index = None
@@ -24,37 +19,23 @@ class IndexBuilder:
         if no_cudf:
             self.cudf = pd
 
-    def create_indices(self, dataset='train_data', save=True, max_sessions=None):
-        df = self.cudf.read_csv(self.data_sources[dataset],
-                                names=[SESSION_ID, TIMESTAMP, ITEM_ID],
-                                dtype={
-                                    SESSION_ID: cp.dtype('int32'),
-                                    TIMESTAMP: cp.dtype('O'),
-                                    ITEM_ID: cp.dtype('int32')
-                                },
-                                usecols=[0, 1, 2]
-                                )
+    def create_indices(self, train_df, max_sessions=None):
+
         if max_sessions:
-            df = df[df[SESSION_ID] < max_sessions]
-        self.session_index = self._top_items_per_sessions(df)
-        self.item_index = self._top_sessions_per_items(df)
-        if save:
-            self.save_indices()
+            train_df = train_df[train_df[SESSION_ID] < max_sessions]
+        self.session_index = self._top_items_per_sessions(train_df)
+        self.item_index = self._top_sessions_per_items(train_df)
 
     def load_indices(self):
-        self.session_index = self.cudf.read_csv(self.index_storage['session_index'],
-                                                index_col=SESSION_ID)
-        self.item_index = self.cudf.read_csv(self.index_storage['item_index'],
-                                             index_col=ITEM_ID)
+        # removed
+        pass
 
     def save_indices(self):
-        self.session_index.to_csv(self.index_storage['session_index'])
-        self.item_index.to_csv(self.index_storage['item_index'])
+        # removed
+        pass
 
     def _top_items_per_sessions(self, df,):
         df = self._select_top_rows(df, self.items_per_session, SESSION_ID, TIMESTAMP, ITEM_ID)
-        if self.item_position_column:
-            df = self._calculate_item_pos(df)
         df = df.drop(columns=[TIMESTAMP])
         df = df.set_index(SESSION_ID)
         return df
@@ -111,21 +92,81 @@ class IndexBuilder:
         empty_sized_table = cudf.DataFrame(index=cp.arange(max_value))
         return empty_sized_table.join(table)
 
-    def get_cudf_index(self, index='item'):
+    def get_df_index(self, index='item', mode='cudf'):
         reshaped_df = self._reshape_index(index)
-        return CudfIndex(reshaped_df)
+        return DataFrameIndex(reshaped_df, mode=mode)
+
+    def get_unique_sessions(self):
+        return self.session_index.index.unique().values
+
+    def get_dict_index(self, index='item'):
+        idx_df, target_size = self.item_index, self.sessions_per_item
+        if index == 'session':
+            idx_df, target_size = self.session_index, self.items_per_session
+
+        renamed_df = idx_df.reset_index()
+        renamed_df.columns = ['key', 'value']
+
+        return DictIndex(renamed_df, target_size, index)
 
 
-class CudfIndex:
+class DataFrameIndex:
     """
     slower than CuPy array as index, but less memory-hungry
     """
-    def __init__(self, index_df):
+    def __init__(self, index_df: cudf.DataFrame, mode='cudf'):
         self.index_df = index_df.fillna(0)
+        self.get_function = self._get_index_using_cudf
+        if mode == 'pandas':
+            self.index_df = self.index_df.to_pandas()
+            self.get_function = self._get_index_using_pandas
         self.shape = self.index_df.shape
 
+        self.known_items = set(self.index_df.index.values)
+
     def __getitem__(self, item):
+        return self.get_function(item)
+
+    def _get_index_using_pandas(self, item):
+        item = item.tolist()
+        return cp.array(self.index_df.loc[item, :].values)
+
+    def _get_index_using_cudf(self, item):
         if item.size == 1:
             item = [item]
-        return self.index_df.loc[item, :].values
+        return cp.array(self.index_df.loc[item, :].values)
 
+
+def whatever_function(p_list):
+    return p_list
+
+
+def list_to_cp(p_list):
+    return cp.pad(cp.array(p_list), (0, 10))
+
+
+class DictIndex:
+    def __init__(self, data_df, array_size, name):
+        import pickle
+        import os
+
+        # stored_idx_pkl = name + '.plk'
+        # if not os.path.isfile(stored_idx_pkl):
+
+        array_per_key = data_df \
+            .groupby('key') \
+            .agg({'value': 'collect'}) \
+            .to_pandas()\
+            .to_dict(orient='index')
+
+        processed_arrays = {k: cp.pad(cp.array(v['value']), (0, array_size))
+                            for k, v in array_per_key.items()}
+        # with open(stored_idx_pkl, 'w') as f:
+        #     pickle.dump(processed_arrays, f)
+
+        self.data_arrays = processed_arrays
+        self.shape = (0, len(self.data_arrays))
+
+    def __getitem__(self, item):
+        # todo: something better than a list comprehension loop here
+        return cp.vstack([self.data_arrays[e] for e in item.tolist()])

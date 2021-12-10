@@ -2,7 +2,13 @@
   "items_per_session": 10,
   "sessions_per_item": 5000,
   "top_k": 100,
-  "item_position_column": false,
+  "reset_ids": false,
+  "data_schema": {
+    "session_column_position": 0,
+    "timestamp_column_position": 1,
+    "item_column_position": 2,
+    "category_column_position": 3
+  },
   "data_sources": {
     "raw_data": "archive/yoochoose-data/yoochoose-clicks.dat",
     "prep_data": "archive/yoochoose-data/yoochoose-clicks-preprocess.dat",
