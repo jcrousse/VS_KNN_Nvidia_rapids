@@ -33,22 +33,13 @@ def get_arguments():
     return args.train, args.split, args.preprocess, args.predict, args.no_cudf
 
 
-def setup_vsknn_indices(project_config):
+def setup_vsknn_indices(project_config, train_df):
     """ returns two key-value stores for session index and item index.
     At the moment it is a simple pandas dataframe behind the scenes, but any object that returns
     CuPy arrays should do"""
     items_per_sessions, sessions_per_item = \
         project_config['items_per_session'], project_config['sessions_per_item']
     train_dataset_path = project_config['data_sources']['train_data']
-
-    train_df = cudf.read_csv(train_dataset_path,
-                             names=[SESSION_ID, TIMESTAMP, ITEM_ID],
-                             dtypes={
-                                 SESSION_ID: cp.dtype('int32'),
-                                 TIMESTAMP: cp.dtype('O'),
-                                 ITEM_ID: cp.dtype('int32'),
-                             },
-                             usecols=[0, 1, 2])
 
     index_builder = IndexBuilder(items_per_sessions, sessions_per_item)
     index_builder.create_indices(train_df, max_sessions=MAX_SESSIONS)
@@ -71,18 +62,20 @@ if __name__ == '__main__':
         train_test_split(project_config)
 
     if predict:
+        train_set = read_dataset('train_data', project_config, 'cudf')
+        test_set = read_dataset('test_data', project_config, 'cudf')
 
-        item_to_sessions, session_to_items = setup_vsknn_indices(project_config)
+        session_to_items, item_to_sessions = setup_vsknn_indices(project_config, train_set)
         model = CupyVsKnnModel(item_to_sessions, session_to_items, top_k=project_config['top_k'])
 
-        test_set = read_dataset('test_data', project_config, 'cudf')
+        train_sessions = train_set[SESSION_ID].unique().values
         test_sessions = test_set[SESSION_ID].unique().values
 
         def run_random_test():
-            """ function to run a prediction on a randomly selected session from test dataset for
+            """ function to run a prediction on a randomly selected session from train dataset for
             quick speed test """
-            random_id = np.random.randint(0, len(test_sessions))
-            random_session_id = test_sessions[random_id]
+            random_id = np.random.randint(0, len(train_sessions))
+            random_session_id = train_sessions[random_id]
             session = session_to_items[random_session_id]
             session_clean = session[cp.where(session > 0)]
             items, scores = model.predict(session_clean)
