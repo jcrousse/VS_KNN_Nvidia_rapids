@@ -11,6 +11,7 @@ def single_row() -> cp.array:
 def single_weight() -> cp.array:
     return cp.array([1], dtype=cp.float32)
 
+
 @pytest.fixture
 def random_bin_matrix():
     cp.random.seed(7357)

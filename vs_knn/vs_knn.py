@@ -7,9 +7,8 @@ from vs_knn.weighted_word_count import weighted_word_count
 
 
 class VsKnnModel:
-    def __init__(self, project_config):
-        self.config = project_config
-        self.top_k = self.config.get('top_k', 100)
+    def __init__(self, top_k=100):
+        self.top_k = top_k
 
     def predict(self, query_items):
         raise NotImplementedError
@@ -27,14 +26,25 @@ class VsKnnModel:
         raise NotImplementedError
 
 
+def linear_decay(n):
+    return (cp.arange(0, n, dtype=cp.float32) + 1) / n
+
+
+def no_decay(n):
+    return cp.ones(n, dtype=cp.float32)
+
+
 class CupyVsKnnModel(VsKnnModel):
-    def __init__(self, project_config, item_index, session_index, positional_weights):
-        super().__init__(project_config)
+    def __init__(self, item_index, session_index, decay='linear', top_k=100):
+        super().__init__(top_k)
 
         self.item_to_sessions = item_index
         self.session_to_items = session_index
 
-        self.positional_weights = positional_weights
+        if decay == 'linear':
+            self.weight_function = linear_decay
+        else:
+            self.weight_function = no_decay
 
     def predict(self, query_items):
         sessions, session_similarities = self.get_session_similarities(query_items)
@@ -48,7 +58,7 @@ class CupyVsKnnModel(VsKnnModel):
 
     def get_session_similarities(self, query):
         item_slice = self.item_to_sessions[query]
-        weights_slice = self.positional_weights[-len(query):]
+        weights_slice = self.weight_function(len(query))
         sessions, session_similarities = weighted_word_count(item_slice, weights_slice)
         return sessions, session_similarities
 
@@ -66,10 +76,10 @@ class CupyVsKnnModel(VsKnnModel):
 
 
 class DataframeVsKnnModel(VsKnnModel):
-    def __init__(self, project_config, no_cudf=False):
+    def __init__(self, project_config, no_cudf=False, top_k=100):
 
-        super().__init__(project_config)
-
+        super().__init__(top_k)
+        self.confid = project_config
         self.index_builder = IndexBuilder(project_config, no_cudf=no_cudf)
 
         self.cudf = cudf
