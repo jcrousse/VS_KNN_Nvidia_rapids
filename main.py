@@ -2,14 +2,13 @@ import argparse
 import json
 import numpy as np
 import cupy as cp
-import cudf
 from cupyx.time import repeat
 from vs_knn import CupyVsKnnModel
 from vs_knn.train_test_split import train_test_split
 from vs_knn.preprocessing import preprocess_data
 from vs_knn.index_builder import IndexBuilder
 from vs_knn.data_read_write import read_dataset
-from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID
+from vs_knn.col_names import SESSION_ID
 from tqdm import tqdm
 
 MAX_SESSIONS = None  # use value such as 10 ** 6 to save memory and time for development

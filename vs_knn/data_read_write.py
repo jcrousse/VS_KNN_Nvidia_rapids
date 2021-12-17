@@ -1,8 +1,17 @@
 import pandas as pd
 import cudf
 import cupy as cp
+import os
+from wget import download
+import sys
 
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, DAY, position_to_name
+
+
+def bar_progress(current, total, width=80):
+    progress_message = "Downloading: %d%% [%d / %d] bytes" % (current / total * 100, current, total)
+    sys.stdout.write("\r" + progress_message)
+    sys.stdout.flush()
 
 
 def read_dataset(dataset, project_config, reader='pandas'):
@@ -11,15 +20,19 @@ def read_dataset(dataset, project_config, reader='pandas'):
 
     if dataset == 'raw_data':
         data_path = project_config['data_sources']['raw_data']
+        remote_path = project_config['remote_data']['raw_data']
         usecols = list(project_config['data_schema'].values())
     elif dataset == 'prep_data':
         data_path = project_config['data_sources']['prep_data']
+        remote_path = project_config['remote_data']['prep_data']
         usecols = list(range(len(column_names)))
     elif dataset == 'train_data':
         data_path = project_config['data_sources']['train_data']
+        remote_path = project_config['remote_data']['train_data']
         usecols = list(range(3))
     elif dataset == 'test_data':
         data_path = project_config['data_sources']['test_data']
+        remote_path = project_config['remote_data']['test_data']
         usecols = list(range(3))
     else:
         raise ValueError(f" Unknown dataset name {dataset}")
@@ -32,6 +45,9 @@ def read_dataset(dataset, project_config, reader='pandas'):
     }
     xd = pd if reader == 'pandas' else cudf
     dtypes = pandas_dtypes if reader == 'pandas' else cudf_dtypes
+
+    if not os.path.isfile(data_path):
+        download(remote_path, out=data_path, bar=bar_progress)
 
     return xd.read_csv(data_path,
                        names=column_names,
