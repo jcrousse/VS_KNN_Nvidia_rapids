@@ -2,7 +2,7 @@
   "items_per_session": 10,
   "sessions_per_item": 5000,
   "top_k": 100,
-  "reset_ids": false,
+  "reset_ids": true,
   "data_schema": {
     "session_column_position": 0,
     "timestamp_column_position": 1,
@@ -12,8 +12,14 @@
   "data_sources": {
     "raw_data": "archive/yoochoose-data/yoochoose-clicks.dat",
     "prep_data": "archive/yoochoose-data/yoochoose-clicks-preprocess.dat",
-    "train_data": "archive/yoochoose-data/train_set.dat",
-    "test_data": "archive/yoochoose-data/test_set.dat"
+    "train_data": "data/train_set.dat",
+    "test_data": "data/test_set.dat"
+  },
+  "remote_data": {
+    "raw_data": "https://storage.googleapis.com/jcrousse-vsknn-rapids/yoochoose-clicks.dat",
+    "prep_data": "https://storage.googleapis.com/jcrousse-vsknn-rapids/yoochoose-clicks-preprocess.dat",
+    "train_data": "https://storage.googleapis.com/jcrousse-vsknn-rapids/train_set.dat",
+    "test_data": "https://storage.googleapis.com/jcrousse-vsknn-rapids/test_set.dat"
   },
   "index_storage": {
     "session_index": "stored_indices/sessions_to_items.csv",
