@@ -34,8 +34,6 @@ def preprocess_data(project_config):
     write_dataframe(preprocessed_df, 'prep_data', project_config)
 
 
-
-
 def get_unique_day_values(df):
     df[DAY] = df[TIMESTAMP].str.slice(start=0, stop=10)
     return df

@@ -143,6 +143,9 @@ def list_to_cp(p_list):
 
 
 class DictIndex:
+    """
+    too slow, not useful at all
+    """
     def __init__(self, data_df, index, max_len):
         group_col, aggreg_col = (SESSION_ID, ITEM_ID) if index == 'session' else (ITEM_ID, SESSION_ID)
 
@@ -154,7 +157,8 @@ class DictIndex:
             .to_dict()
 
         for k in tqdm(self._dict_index):
-            self._dict_index[k] = cp.pad(cp.array(self._dict_index[k]), (0, self.max_len))
+            row = self._dict_index[k]
+            self._dict_index[k] = cp.pad(cp.array(row), (0, len(row) - self.max_len))
 
     def __getitem__(self, item):
         # todo: something better than a list comprehension loop here

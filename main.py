@@ -110,7 +110,7 @@ if __name__ == '__main__':
         train_set = read_dataset('train_data', project_config, 'cudf')
         test_set = read_dataset('test_data', project_config, 'cudf')
 
-        session_to_items, item_to_sessions = setup_vsknn_indices(project_config, train_set, 'dict')
+        session_to_items, item_to_sessions = setup_vsknn_indices(project_config, train_set, 'pandas')
         cp_model = CupyVsKnnModel(item_to_sessions, session_to_items, top_k=project_config['top_k'])
 
         train_sessions = train_set[SESSION_ID].unique().values
@@ -120,7 +120,7 @@ if __name__ == '__main__':
             """ function to run a prediction on a randomly selected session from train dataset for
             quick speed test """
             random_id = np.random.randint(0, len(train_sessions))
-            random_session_id = np.reshape(train_sessions[random_id], (1, -1))
+            random_session_id = train_sessions[random_id]
             session = session_to_items[random_session_id]
             session_clean = session[cp.where(session > 0)]
             items, scores = cp_model.predict(session_clean)
