@@ -143,6 +143,9 @@ def list_to_cp(p_list):
 
 
 class DictIndex:
+    """
+    too slow, not useful at all
+    """
     def __init__(self, data_df, index, max_len):
         group_col, aggreg_col = (SESSION_ID, ITEM_ID) if index == 'session' else (ITEM_ID, SESSION_ID)
 
