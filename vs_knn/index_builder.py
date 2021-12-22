@@ -2,9 +2,8 @@ import cudf
 import pandas as pd
 import cupy as cp
 import gc
-from vs_knn.data_read_write import read_dataset
-from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION, CATEGORY
-
+from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID, ITEM_POSITION
+from tqdm import tqdm
 
 class IndexBuilder:
     def __init__(self, items_per_session=10, sessions_per_item=5000, no_cudf=False):
@@ -100,14 +99,12 @@ class IndexBuilder:
         return self.session_index.index.unique().values
 
     def get_dict_index(self, index='item'):
-        idx_df, target_size = self.item_index, self.sessions_per_item
         if index == 'session':
-            idx_df, target_size = self.session_index, self.items_per_session
-
-        renamed_df = idx_df.reset_index()
-        renamed_df.columns = ['key', 'value']
-
-        return DictIndex(renamed_df, target_size, index)
+            idx_df, target_len = self.session_index, self.items_per_session
+        else:
+            idx_df, target_len = self.item_index, self.sessions_per_item
+        idx_df = idx_df.reset_index()
+        return DictIndex(idx_df, index, target_len)
 
 
 class DataFrameIndex:
@@ -146,27 +143,19 @@ def list_to_cp(p_list):
 
 
 class DictIndex:
-    def __init__(self, data_df, array_size, name):
-        import pickle
-        import os
+    def __init__(self, data_df, index, max_len):
+        group_col, aggreg_col = (SESSION_ID, ITEM_ID) if index == 'session' else (ITEM_ID, SESSION_ID)
 
-        # stored_idx_pkl = name + '.plk'
-        # if not os.path.isfile(stored_idx_pkl):
+        self.max_len = max_len
+        self._dict_index = data_df \
+            .groupby(group_col) \
+            .agg({aggreg_col: 'collect'})[aggreg_col]\
+            .to_pandas() \
+            .to_dict()
 
-        array_per_key = data_df \
-            .groupby('key') \
-            .agg({'value': 'collect'}) \
-            .to_pandas()\
-            .to_dict(orient='index')
-
-        processed_arrays = {k: cp.pad(cp.array(v['value']), (0, array_size))
-                            for k, v in array_per_key.items()}
-        # with open(stored_idx_pkl, 'w') as f:
-        #     pickle.dump(processed_arrays, f)
-
-        self.data_arrays = processed_arrays
-        self.shape = (0, len(self.data_arrays))
+        for k in tqdm(self._dict_index):
+            self._dict_index[k] = cp.pad(cp.array(self._dict_index[k]), (0, self.max_len))
 
     def __getitem__(self, item):
         # todo: something better than a list comprehension loop here
-        return cp.vstack([self.data_arrays[e] for e in item.tolist()])
+        return cp.vstack([self._dict_index[int(e)] for e in item])
