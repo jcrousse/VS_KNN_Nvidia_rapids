@@ -33,7 +33,11 @@ sessions_sample = cp_data[cp_data['session_id'].isin(random_session_ids)]\
     .groupby('session_id').agg({'item_id': 'collect'}).to_pandas()['item_id'].values
 
 
-def create_index_objects(raw_data):
+def create_index_objects(raw_data, max_items_per_session=None):
+
+    if max_items_per_session:
+        raw_data = keep_n_latest_sessions(raw_data, max_items_per_session)
+
     start_end_idx_df = raw_data\
         .sort_values(by="item_id")\
         .reset_index().drop(columns="index")\
@@ -59,6 +63,13 @@ def create_index_objects(raw_data):
     return itemid_to_itemidx, session_array, item_to_idx
 
 
+def keep_n_latest_sessions(df, max_items_per_session):
+    df = df.sort_values(by=['item_id', 'timestamp'], ascending=[True, False]).reset_index()
+    df['session_n'] = df.groupby('item_id').cumcount()
+    df = df[df['session_n'] <= max_items_per_session]
+    return df[['item_id', 'session_id']]
+
+
 def random_session():
     """maybe do this with pandas stuff? doesn't matter if on GPU or not, we assume we
     start with a list of items"""
@@ -80,5 +91,7 @@ def cupy_indexing(itemid_to_itemidx, session_array, item_to_idx):
 if __name__ == '__main__':
     print(repeat(random_session, n_repeat=100))
     # print(repeat(cudf_indexing,  n_repeat=10))
-    item_map, sessions, item_idx = create_index_objects(cp_data)
+    item_map, sessions, item_idx = create_index_objects(cp_data, 5000)
+    dmf = round((sessions.nbytes + item_idx.nbytes) / 10 ** 6, 2)
+    print(f"Device memory footprint for index objects: {dmf} Mb")
     print(repeat(cupy_indexing, (item_map, sessions, item_idx),  n_repeat=100))
