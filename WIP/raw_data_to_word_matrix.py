@@ -20,7 +20,9 @@ import random
 
 data_path = "data/train_set.dat"
 col_names = ['session_id', 'timestamp', 'item_id', 'category']
-cp_data = cudf.read_csv(data_path,  names=col_names)[['session_id', 'timestamp',  'item_id']]\
+data_types = {'session_id': cp.dtype('int32'), 'timestamp':  cp.dtype('O'),  'item_id': cp.dtype('int32'),
+              'category': cp.dtype('int32')}
+cp_data = cudf.read_csv(data_path,  names=col_names, dtype=data_types)[['session_id', 'timestamp',  'item_id']]\
     .sort_values(by='timestamp', ascending=False)
 
 # also works with strings (can be tested by un-commenting line below
