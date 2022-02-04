@@ -66,7 +66,7 @@ class CupyIndex:
         values_idx = self.id_to_idx[query_ids]
         max_len = int(values_idx[:, 2].max())
         values_slice = cp.vstack([
-            cp.pad(self.value_array[np.arange(int(l[0]), int(l[1]) + 1)], (0, max_len - int(l[2])))
+            cp.pad(self.value_array[cp.arange(int(l[0]), int(l[1]) + 1)], (0, max_len - int(l[2])))
             for l in values_idx
         ])
         return values_slice
@@ -114,12 +114,17 @@ def predict_random_session(model: CudaVsKnn, session_sample):
 
 
 if __name__ == '__main__':
-
+    DEV = True  # False for full dataset
+    nrows = 10000 if DEV else None
     data_path = "data/train_set.dat"
     col_names = ['session_id', 'timestamp', 'item_id', 'category']
     data_types = {'session_id': cp.dtype('int32'), 'timestamp': cp.dtype('O'), 'item_id': cp.dtype('int32'),
                   'category': cp.dtype('int32')}
-    youchoose_data = cudf.read_csv(data_path, names=col_names, dtype=data_types)[['session_id', 'timestamp', 'item_id']] \
+    youchoose_data = cudf.read_csv(
+        data_path,
+        names=col_names,
+        dtype=data_types,
+        nrows=nrows)[['session_id', 'timestamp', 'item_id']] \
         .sort_values(by='timestamp', ascending=False)
 
     # also works with strings (can be tested by un-commenting line below
