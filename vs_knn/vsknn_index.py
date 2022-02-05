@@ -1,3 +1,5 @@
+import gc
+
 import cudf
 import cupy as cp
 
@@ -41,7 +43,7 @@ class OneDimVsknnIndex:
         self.id_to_idx = key_table.values
 
         dmf = round((self.value_array.nbytes + self.id_to_idx.nbytes) / 10 ** 6, 2)
-        print(f"Device memory footprint for index objects: {dmf} Mb")
+        print(f"Device memory footprint for index objects: {dmf} Mb ({index_key} index)")
         return self
 
     def __getitem__(self, query):
@@ -67,17 +69,18 @@ class TwoDimVsknnIndex:
     def __init__(self):
         self.value_array: cp.array = None
 
-    # todo: reshape in batches
-    def build_index(self, train_data: cudf.DataFrame, index_key=SESSION_ID, index_value=ITEM_ID):
+    # todo: reshape in batches ?
+    def build_index(self, train_data: cudf.DataFrame, index_key=SESSION_ID, index_value=ITEM_ID, n_batches=100):
         train_data = train_data.sort_values(by=[index_key, index_value], ascending=[True, True])
         train_data = train_data.reset_index().drop('index', axis=1)
         cum_count_col = train_data.groupby(index_key).cumcount().astype(int)
         train_data["position"] = cum_count_col
+        # reshaped_df = self._reshape_in_batches(train_data, index_key, index_value)
         reshaped_df = train_data.pivot(index=index_key, columns="position", values=[index_value])
         self.value_array = reshaped_df.fillna(0).values
 
         dmf = round(self.value_array.nbytes / 10 ** 6, 2)
-        print(f"Device memory footprint for index objects: {dmf} Mb")
+        print(f"Device memory footprint for index objects: {dmf} Mb ({index_key} index)")
         return self
 
     def __getitem__(self, query):

@@ -66,8 +66,12 @@ class CupyVsKnnModel(VsKnnModel):
         if self.max_items_per_session:
             train_df = self._keep_n_latest_items(train_df)
 
+        train_df = train_df.drop(TIMESTAMP, axis=1)
         self.name_map = self.name_map.build(train_df)
         processed_df = self.name_map.get_transformed_df()
+
+        del train_df
+        gc.collect()
 
         self.item_to_sessions = self.item_to_sessions.build_index(processed_df, ITEM_ID, SESSION_ID)
         self.session_to_items = self.session_to_items.build_index(processed_df, SESSION_ID, ITEM_ID)
@@ -107,17 +111,18 @@ class CupyVsKnnModel(VsKnnModel):
         raise NotImplementedError
 
     def _keep_n_latest_sessions(self, train_data):
-        return self._keep_n_latest_values(train_data, ITEM_ID, SESSION_ID, self.max_sessions_per_items)
+        return self._keep_n_latest_values(train_data, ITEM_ID, self.max_sessions_per_items)
 
     def _keep_n_latest_items(self, train_data):
-        return self._keep_n_latest_values(train_data, SESSION_ID, ITEM_ID, self.max_items_per_session)
+        return self._keep_n_latest_values(train_data, SESSION_ID, self.max_items_per_session)
 
     @staticmethod
-    def _keep_n_latest_values(df, sort_key, sort_value, n_keep):
+    def _keep_n_latest_values(df, sort_key, n_keep):
         df = df.sort_values(by=[sort_key, TIMESTAMP], ascending=[True, False]).reset_index()
         df['value_n'] = df.groupby(sort_key).cumcount()
         df = df[df['value_n'] <= n_keep]
-        return df[[sort_key, sort_value]]
+        return df.drop(['index', 'value_n'], axis=1)
+
 
 class DataframeVsKnnModel(VsKnnModel):
     def __init__(self, project_config, no_cudf=False, top_k=100):

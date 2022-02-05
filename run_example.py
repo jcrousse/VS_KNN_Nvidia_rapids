@@ -6,7 +6,7 @@ from cupyx.time import repeat
 
 
 def predict_vsknn(vsknn_model, list_of_sessions):
-    session = list_of_sessions[random.randint(0, 1000)]
+    session = list_of_sessions[random.randint(0, 999)]
     return vsknn_model.predict(session)
 
 
@@ -18,8 +18,9 @@ if __name__ == '__main__':
                              names=[SESSION_ID, TIMESTAMP, ITEM_ID],
                              )
 
-    model = CupyVsKnnModel(top_k=100, max_sessions_per_items=5000)
+    model = CupyVsKnnModel(top_k=100, max_sessions_per_items=5000, max_item_per_session=10)
     model.train(train_df)
+    print("model trained!")
 
     random.seed(674837438)
     sessions = random.choices(train_df[SESSION_ID].unique(), k=1000)
@@ -28,4 +29,4 @@ if __name__ == '__main__':
         for session in sessions
     ]
 
-    print(repeat(predict_vsknn, (model, session_items), n_repeat=10))
+    print(repeat(predict_vsknn, (model, session_items), n_repeat=1000))
