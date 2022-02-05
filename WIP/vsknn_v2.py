@@ -7,7 +7,6 @@ set of items, given input raw data as three columns: session_id, item_id and tim
 
 import cudf
 import cupy as cp
-import numpy as np
 from cupyx.time import repeat
 import random
 
@@ -64,9 +63,13 @@ class CupyIndex:
     def __getitem__(self, query):
         query_ids = [self.name_to_id[e] for e in query]
         values_idx = self.id_to_idx[query_ids]
-        max_len = int(values_idx[:, 2].max())
-        values_slice = cp.vstack([
-            cp.pad(self.value_array[cp.arange(int(l[0]), int(l[1]) + 1)], (0, max_len - int(l[2])))
+        # max_len = int(values_idx[:, 2].max())
+        # values_slice = cp.vstack([
+        #     cp.pad(self.value_array[cp.arange(int(l[0]), int(l[1]) + 1)], (0, max_len - int(l[2])))
+        #     for l in values_idx
+        # ])
+        values_slice = cp.hstack([
+            self.value_array[cp.arange(int(l[0]), int(l[1]) + 1)]
             for l in values_idx
         ])
         return values_slice
@@ -74,24 +77,32 @@ class CupyIndex:
 
 class CudaVsKnn:
 
-    def __init__(self, max_item_per_session=None):
+    def __init__(self, max_sessions_per_items=None, max_item_per_session=None):
+        self.max_sessions_per_items = max_sessions_per_items
         self.max_items_per_session = max_item_per_session
 
         self.item_to_sessions = CupyIndex()
-        self.session_to_item = CupyIndex()
+        self.session_to_items = CupyIndex()
 
     def train(self, train_data: cudf.DataFrame):
 
         self._validate_data(train_data)
 
-        if self.max_items_per_session:
+        if self.max_sessions_per_items:
             train_data = self._keep_n_latest_sessions(train_data)
 
-        self.item_to_sessions.build_index(train_data, ITEM_ID, SESSION_ID)
+        if self.max_items_per_session:
+            train_data = self._keep_n_latest_items(train_data)
 
-    def predict(self, session):
+        self.item_to_sessions.build_index(train_data, ITEM_ID, SESSION_ID)
+        self.session_to_items.build_index(train_data, SESSION_ID, SESSION_ID)
+
+    def predict(self, items):
         """"""
-        historical_sessions = self.item_to_sessions[session]
+        historical_sessions = self.item_to_sessions[items]
+        session_query = cp.asarray(cp.unique(historical_sessions)).tolist()
+        print(len(session_query))
+        historical_items = self.session_to_items[session_query]
 
     def _validate_data(self, train_data: cudf.DataFrame):
         """quick check that the expected columns are there (based on name)"""
@@ -99,11 +110,18 @@ class CudaVsKnn:
         if expected_columns - set(train_data.columns):
             raise ValueError(f"Missing expected columns {expected_columns - set(train_data.columns)}")
 
-    def _keep_n_latest_sessions(self, df):
-        df = df.sort_values(by=['item_id', 'timestamp'], ascending=[True, False]).reset_index()
-        df['session_n'] = df.groupby('item_id').cumcount()
-        df = df[df['session_n'] <= self.max_items_per_session]
-        return df[['item_id', 'session_id']]
+    def _keep_n_latest_sessions(self, train_data):
+        return self._keep_n_latest_values(train_data, ITEM_ID, SESSION_ID, self.max_sessions_per_items)
+
+    def _keep_n_latest_items(self, train_data):
+        return self._keep_n_latest_values(train_data, SESSION_ID, ITEM_ID, self.max_items_per_session)
+
+    @staticmethod
+    def _keep_n_latest_values(df, sort_key, sort_value, n_keep):
+        df = df.sort_values(by=[sort_key, TIMESTAMP], ascending=[True, False]).reset_index()
+        df['value_n'] = df.groupby(sort_key).cumcount()
+        df = df[df['value_n'] <= n_keep]
+        return df[[sort_key, sort_value]]
 
 
 def predict_random_session(model: CudaVsKnn, session_sample):
@@ -114,7 +132,7 @@ def predict_random_session(model: CudaVsKnn, session_sample):
 
 
 if __name__ == '__main__':
-    DEV = True  # False for full dataset
+    DEV = False  # False for full dataset
     nrows = 10000 if DEV else None
     data_path = "data/train_set.dat"
     col_names = ['session_id', 'timestamp', 'item_id', 'category']
@@ -140,6 +158,6 @@ if __name__ == '__main__':
     vsk_model = CudaVsKnn()
     vsk_model.train(youchoose_data)
 
-    print(repeat(predict_random_session, (vsk_model, sessions_sample), n_repeat=100))
+    print(repeat(predict_random_session, (vsk_model, sessions_sample), n_repeat=10))
     # print(repeat(cudf_indexing,  n_repeat=10))
 
