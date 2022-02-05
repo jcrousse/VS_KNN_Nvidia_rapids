@@ -1,4 +1,5 @@
 import pytest
+import os
 import cupy as cp
 
 
@@ -22,3 +23,13 @@ def random_bin_matrix():
 @pytest.fixture
 def weight_array_ones():
     return cp.ones(20, dtype=cp.float32)
+
+
+@pytest.fixture
+def youchoose_raw_int() -> str:
+    return os.path.join(os.path.dirname(__file__), 'data', 'youchoose_raw_int.csv')
+
+
+@pytest.fixture
+def youchoose_raw_str() -> str:
+    return os.path.join(os.path.dirname(__file__), 'data', 'youchoose_raw_str.csv')

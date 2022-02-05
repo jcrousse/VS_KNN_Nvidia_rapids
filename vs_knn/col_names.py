@@ -12,3 +12,5 @@ position_to_name = {
     "item_column_position": ITEM_ID,
     "category_column_position": CATEGORY,
 }
+
+YOUCHOOSE_COLUMNS = [SESSION_ID, TIMESTAMP, ITEM_ID, CATEGORY]
