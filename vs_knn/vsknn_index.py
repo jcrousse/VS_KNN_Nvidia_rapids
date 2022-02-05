@@ -1,7 +1,7 @@
 import cudf
 import cupy as cp
 
-from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
+from vs_knn.col_names import SESSION_ID, ITEM_ID
 
 
 class OneDimVsknnIndex:
@@ -65,16 +65,19 @@ class TwoDimVsknnIndex:
     """
 
     def __init__(self):
-        self.name_to_id = {}
         self.value_array: cp.array = None
 
     def build_index(self, train_data: cudf.DataFrame, index_key=SESSION_ID, index_value=ITEM_ID):
-        train_data = train_data.reset_index()
         train_data = train_data.sort_values(by=[index_key, index_value], ascending=[True, True])
-        idx_df = idx_df.reset_index()
-        cum_count_col = idx_df.groupby(idx_name).cumcount().astype(int)
-        idx_df[ITEM_POSITION] = cum_count_col
-        reshaped_df = idx_df.pivot(index=idx_name, columns=ITEM_POSITION, values=[col_name])
+        train_data = train_data.reset_index()
+        cum_count_col = train_data.groupby(index_key).cumcount().astype(int)
+        train_data["position"] = cum_count_col
+        reshaped_df = train_data.pivot(index=index_key, columns="position", values=[index_value])
+        self.value_array = reshaped_df.fillna(0).values
+
+        dmf = round(self.value_array.nbytes / 10 ** 6, 2)
+        print(f"Device memory footprint for index objects: {dmf} Mb")
+        return self
 
     def __getitem__(self, query):
-        pass
+        return self.value_array[query, :]
