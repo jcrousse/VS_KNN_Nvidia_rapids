@@ -3,6 +3,8 @@ To reduce device memory footprint whithout putting constraints on the input data
 this tool transforms the input data item_id and session_id into contiguous int32 values.
 Then it provides dictionaries and arrays to convert the names to ids and vice versa.
 """
+import gc
+
 import cudf
 import numpy as np
 from vs_knn.col_names import SESSION_ID, ITEM_ID
@@ -21,9 +23,14 @@ class NameIdxMap:
         self._name_to_idx_map = {col: {} for col in self.columns_to_convert}
         self._idx_to_name_map = {col: np.array([]) for col in self.columns_to_convert}
 
+        self._transformed_df = cudf.DataFrame()
+        self._fit = False
+
     def build(self, df: cudf.DataFrame):
 
         self._validate_df(df)
+
+        self._transformed_df = df
 
         for col in self.columns_to_convert:
             self._create_col_mappings(df, col)
@@ -49,6 +56,20 @@ class NameIdxMap:
     def _create_col_mappings(self, df, col):
         """ creates name_to_idx and idx_to_name mappings for the given column 'col' """
         ordered_names = df[col].unique()
-        self._name_to_idx_map[col] = ordered_names.reset_index().set_index(col)['index'].to_pandas().to_dict()
+        name_to_idx_series = ordered_names.reset_index().set_index(col)['index']
+        self._name_to_idx_map[col] = name_to_idx_series.to_pandas().to_dict()
         self._idx_to_name_map[col] = ordered_names.to_pandas().values
+
+        self._transformed_df = self._transformed_df.set_index(col)\
+            .join(name_to_idx_series)\
+            .reset_index()\
+            .drop(col, axis=1)\
+            .rename(columns={'index': col})
+
+    def get_transformed_df(self):
+        return self._transformed_df
+
+    def cleanup(self):
+        del self._transformed_df
+        gc.collect()
 
