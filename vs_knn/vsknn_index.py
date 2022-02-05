@@ -67,9 +67,10 @@ class TwoDimVsknnIndex:
     def __init__(self):
         self.value_array: cp.array = None
 
+    # todo: reshape in batches
     def build_index(self, train_data: cudf.DataFrame, index_key=SESSION_ID, index_value=ITEM_ID):
         train_data = train_data.sort_values(by=[index_key, index_value], ascending=[True, True])
-        train_data = train_data.reset_index()
+        train_data = train_data.reset_index().drop('index', axis=1)
         cum_count_col = train_data.groupby(index_key).cumcount().astype(int)
         train_data["position"] = cum_count_col
         reshaped_df = train_data.pivot(index=index_key, columns="position", values=[index_value])

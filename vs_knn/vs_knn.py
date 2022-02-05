@@ -1,14 +1,21 @@
+import gc
+
 import pandas as pd
 import cudf
 import cupy as cp
-from vs_knn.col_names import SESSION_ID, ITEM_ID, PI_I
+from vs_knn.col_names import SESSION_ID, ITEM_ID, PI_I, TIMESTAMP
 from vs_knn.index_builder import IndexBuilder
 from vs_knn.weighted_word_count import weighted_word_count
+from vs_knn.vsknn_index import OneDimVsknnIndex, TwoDimVsknnIndex
+from vs_knn.name_mapper import NameIdxMap
 
 
 class VsKnnModel:
     def __init__(self, top_k=100):
         self.top_k = top_k
+
+    def train(self, train_df: cudf.DataFrame):
+        raise NotImplementedError
 
     def predict(self, query_items):
         raise NotImplementedError
@@ -35,23 +42,48 @@ def no_decay(n):
 
 
 class CupyVsKnnModel(VsKnnModel):
-    def __init__(self, item_index, session_index, decay='linear', top_k=100):
+    def __init__(self,  decay='linear', top_k=100, max_sessions_per_items=None, max_item_per_session=None):
         super().__init__(top_k)
 
-        self.item_to_sessions = item_index
-        self.session_to_items = session_index
+        self.max_sessions_per_items = max_sessions_per_items
+        self.max_items_per_session = max_item_per_session
+
+        self.item_to_sessions = OneDimVsknnIndex()
+        self.session_to_items = TwoDimVsknnIndex()
+
+        self.name_map = NameIdxMap()
 
         if decay == 'linear':
             self.weight_function = linear_decay
         else:
             self.weight_function = no_decay
 
+    def train(self, train_df: cudf.DataFrame):
+
+        if self.max_sessions_per_items:
+            train_df = self._keep_n_latest_sessions(train_df)
+
+        if self.max_items_per_session:
+            train_df = self._keep_n_latest_items(train_df)
+
+        self.name_map = self.name_map.build(train_df)
+        processed_df = self.name_map.get_transformed_df()
+
+        self.item_to_sessions = self.item_to_sessions.build_index(processed_df, ITEM_ID, SESSION_ID)
+        self.session_to_items = self.session_to_items.build_index(processed_df, SESSION_ID, ITEM_ID)
+
+        del processed_df
+        gc.collect()
+        self.name_map.remove_col(SESSION_ID)
+
     def predict(self, query_items):
-        sessions, session_similarities = self.get_session_similarities(query_items)
+        query_idx = self.name_map.name_to_idx(query_items, ITEM_ID)
+        sessions, session_similarities = self.get_session_similarities(query_idx)
         if len(sessions) > self.top_k:
             sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
         unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
-        return unique_items, w_sum_items
+        ret_item_names = self.name_map.idx_to_name([int(e) for e in cp.asarray(unique_items)], ITEM_ID)  # todo: find better solution for conversion to list, should wory with np array
+        return ret_item_names, w_sum_items
 
     def _step1_ingest_query(self, query_items):
         pass
@@ -74,6 +106,18 @@ class CupyVsKnnModel(VsKnnModel):
     def _step3_keep_topk_sessions(self, session_items):
         raise NotImplementedError
 
+    def _keep_n_latest_sessions(self, train_data):
+        return self._keep_n_latest_values(train_data, ITEM_ID, SESSION_ID, self.max_sessions_per_items)
+
+    def _keep_n_latest_items(self, train_data):
+        return self._keep_n_latest_values(train_data, SESSION_ID, ITEM_ID, self.max_items_per_session)
+
+    @staticmethod
+    def _keep_n_latest_values(df, sort_key, sort_value, n_keep):
+        df = df.sort_values(by=[sort_key, TIMESTAMP], ascending=[True, False]).reset_index()
+        df['value_n'] = df.groupby(sort_key).cumcount()
+        df = df[df['value_n'] <= n_keep]
+        return df[[sort_key, sort_value]]
 
 class DataframeVsKnnModel(VsKnnModel):
     def __init__(self, project_config, no_cudf=False, top_k=100):

@@ -71,7 +71,8 @@ class NameIdxMap:
     def get_transformed_df(self):
         return self._transformed_df
 
-    def cleanup(self):
-        del self._transformed_df
+    def remove_col(self, column_name):
+        del self._name_to_idx_map[column_name]
+        del self._idx_to_name_map[column_name]
         gc.collect()
 

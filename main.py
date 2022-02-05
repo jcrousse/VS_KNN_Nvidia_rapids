@@ -111,7 +111,7 @@ if __name__ == '__main__':
         test_set = read_dataset('test_data', project_config, 'cudf')
 
         session_to_items, item_to_sessions = setup_vsknn_indices(project_config, train_set, 'pandas')
-        cp_model = CupyVsKnnModel(item_to_sessions, session_to_items, top_k=project_config['top_k'])
+        cp_model = CupyVsKnnModel(top_k=project_config['top_k'])
 
         train_sessions = train_set[SESSION_ID].unique().values
         test_sessions = test_set[SESSION_ID].unique().values
