@@ -1,4 +1,3 @@
-session_id,timestamp,item_id
 session_1,2014-04-07T10:51:09.277Z,item_1
 session_1,2014-04-07T10:54:09.868Z,item_2
 session_1,2014-04-07T10:54:46.998Z,item_3

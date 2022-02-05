@@ -10,8 +10,8 @@ def test_name_mapper_int(youchoose_raw_int):
                   CATEGORY: cp.dtype('int32')}
 
     df = cudf.read_csv(youchoose_raw_int,
-                       col_names=YOUCHOOSE_COLUMNS,
-                       dtype=data_types).sort_values(by='timestamp', ascending=False)
+                       names=YOUCHOOSE_COLUMNS,
+                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)
 
     convert_then_retrieve(df)
 
@@ -21,8 +21,8 @@ def test_name_mapper_str(youchoose_raw_str):
                   CATEGORY: cp.dtype('str')}
 
     df = cudf.read_csv(youchoose_raw_str,
-                       col_names=YOUCHOOSE_COLUMNS,
-                       dtype=data_types).sort_values(by='timestamp', ascending=False)
+                       names=YOUCHOOSE_COLUMNS,
+                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)
 
     convert_then_retrieve(df)
 

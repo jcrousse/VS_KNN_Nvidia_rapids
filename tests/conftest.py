@@ -33,3 +33,8 @@ def youchoose_raw_int() -> str:
 @pytest.fixture
 def youchoose_raw_str() -> str:
     return os.path.join(os.path.dirname(__file__), 'data', 'youchoose_raw_str.csv')
+
+
+@pytest.fixture
+def youchoose_preprocessed() -> str:
+    return os.path.join(os.path.dirname(__file__), 'data', 'youchoose_preprocessed.csv')

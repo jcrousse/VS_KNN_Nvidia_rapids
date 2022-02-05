@@ -16,6 +16,8 @@ class NameIdxMap:
         :param columns_to_convert: Columns names in input df for which an index must be created
         :param skips_missings: if True, a key is not found in name_to_idx function will be skipped instead of
         causing a KeyError.
+        # todo: option to delete some of the column mappings. Since session mappings won't be used since model gets
+            items in and out
         """
         self.skip_missings = skips_missings
 
