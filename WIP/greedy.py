@@ -25,27 +25,35 @@ void score_items_kernel(
             int value_idx = target_values[col];
             //printf("row: %d, col: %d target_id: %d \n", row, col, value_idx);
             atomicAdd(&weighted_count[value_idx], weight[col]);
+            //indices[idx[0]] = indices[idx[0]] + row;
+            //atomicAdd(&idx[0], 1);
         }
    }
 }
 ''', 'score_items_kernel')
 
 
-def get_weighted_count(sessions, items):
-    my_session = cp.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], dtype=cp.dtype('int32'))
-    result = cp.zeros(len(sessions), dtype=cp.dtype('float32'))
+def get_weighted_count(sessions, items, n_sessions, n_items):
+    my_session = cp.array([1, 2, 3], dtype=cp.dtype('int32'))
     n_rows = len(sessions)
     n_cols = len(my_session)
 
-    n_blocks_x = int(n_rows / 128) + 1
-    n_blocks_y = int(n_cols / 8) + 1
+    result_sessions = cp.zeros(n_sessions, dtype=cp.dtype('float32'))
+    # result_items = cp.zeros(n_sessions, dtype=cp.dtype('float32'))
+
+    n_blocks_x = int(n_rows / 64) + 1
+    n_blocks_y = int(n_cols / 4) + 1
+
+    # TODO: The number of threads per block should be a round multiple of the warp size,
+    #  which is 32 on all current hardware.
 
     weights = cp.ones_like(my_session, dtype=cp.dtype('float32'))
     score_items_kernel(
         (n_blocks_x, n_blocks_y),
-        (128, 8),
-        (items, result, my_session, weights, n_rows, n_cols, result))
-    return result
+        (64, 4),
+        (items, sessions, my_session, weights, n_rows, n_cols, result_sessions))
+
+    return result_sessions
 
 
 if __name__ == '__main__':
@@ -63,6 +71,13 @@ if __name__ == '__main__':
     session_tape = train_df[SESSION_ID].values
     items_tape = train_df[ITEM_ID].values
 
+    n_sessions = len(cp.unique(session_tape))
+    n_items = len(cp.unique(items_tape))
+
+    # TODO:
+    #  - Pre initialize the looong similarity vectors
+    #  - Smaller vectors, but with indices to keep track of who writes where
+
     # sessions = random.choices(train_df[SESSION_ID].unique(), k=100)
     # session_items = [
     #     [int(e) for e in train_df[train_df[SESSION_ID] == session][ITEM_ID].values]
@@ -72,6 +87,6 @@ if __name__ == '__main__':
     del train_df
     gc.collect()
 
-    print(repeat(get_weighted_count, (session_tape, items_tape), n_repeat=10))
+    print(repeat(get_weighted_count, (session_tape, items_tape, n_sessions, n_items), n_repeat=10))
 
     a = 1
