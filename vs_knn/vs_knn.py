@@ -86,7 +86,7 @@ class CupyVsKnnModel(VsKnnModel):
         if len(sessions) > self.top_k:
             sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
         unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
-        ret_item_names = self.name_map.idx_to_name([int(e) for e in cp.asarray(unique_items)], ITEM_ID)  # todo: find better solution for conversion to list, should wory with np array
+        ret_item_names = self.name_map.idx_to_name([int(e) for e in cp.asarray(unique_items)], ITEM_ID)
         return ret_item_names, w_sum_items
 
     def _step1_ingest_query(self, query_items):
