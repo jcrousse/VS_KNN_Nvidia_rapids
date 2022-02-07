@@ -38,8 +38,8 @@ def weighted_word_count(word_matrix, row_weights):
     elif word_matrix.ndim != 2:
         raise ValueError("word_matrix must be a 1-D or 2-D array")
     num_rows, num_cols = word_matrix.shape
-    n_blocks_x = int(num_rows / 16) + 1
-    n_blocks_y = int(num_cols / 16) + 1
+    n_blocks_x = int(num_rows / 8) + 1
+    n_blocks_y = int(num_cols / 8) + 1
     unique_words = cp.unique(word_matrix)
     if unique_words[0] == 0:
         unique_words = unique_words[1:]
@@ -48,7 +48,9 @@ def weighted_word_count(word_matrix, row_weights):
     weighted_count = cp.zeros((n_unique_words,), dtype=np.float32)
     weighted_wordcount_kernel(
         (n_blocks_x, n_blocks_y, n_blocks_z),
-        (16, 16, 4),
+        (8, 8, 4),
         (word_matrix, row_weights, unique_words, num_rows, num_cols, n_unique_words, weighted_count)
     )
+    # TODO: The number of threads per block should be a round multiple of the warp size,
+    #  which is 32 on all current hardware.
     return unique_words, weighted_count
