@@ -3,11 +3,30 @@ import random
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID
 from vs_knn.vs_knn import CupyVsKnnModel
 from cupyx.time import repeat
+import pickle
+import os
 
 
 def predict_vsknn(vsknn_model, list_of_sessions):
     session = list_of_sessions[random.randint(0, 999)]
     return vsknn_model.predict(session)
+
+
+def get_test_sessions(df):
+    stored_sessions_file = 'train_session.pkl'
+    if not os.path.isfile(stored_sessions_file):
+        random.seed(674837438)
+        sessions = random.choices(df[SESSION_ID].unique(), k=1000)
+        ret = [
+            [int(e) for e in df[df[SESSION_ID] == session][ITEM_ID].values]
+            for session in sessions
+        ]
+        with open(stored_sessions_file, 'wb') as f:
+            pickle.dump(ret, f)
+    else:
+        with open(stored_sessions_file, 'rb') as f:
+            ret = pickle.load(f)
+    return ret
 
 
 if __name__ == '__main__':
@@ -22,11 +41,6 @@ if __name__ == '__main__':
     model.train(train_df)
     print("model trained!")
 
-    random.seed(674837438)
-    sessions = random.choices(train_df[SESSION_ID].unique(), k=1000)
-    session_items = [
-        [int(e) for e in train_df[train_df[SESSION_ID] == session][ITEM_ID].values]
-        for session in sessions
-    ]
-
+    session_items = get_test_sessions(train_df)
+    print("Train exammples prepared")
     print(repeat(predict_vsknn, (model, session_items), n_repeat=1000))
