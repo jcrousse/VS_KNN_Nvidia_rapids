@@ -1,7 +1,11 @@
 import cudf
 import random
+
+import numpy as np
+
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID
 from vs_knn.vs_knn import CupyVsKnnModel
+from vs_knn.weighted_word_count import weighted_word_count
 from cupyx.time import repeat
 import pickle
 import os
@@ -30,6 +34,13 @@ def get_test_sessions(df):
 
 
 if __name__ == '__main__':
+    import cupy as cp
+    cp.random.seed(7357)
+    test_matrix = cp.reshape(cp.arange(50000), (10, 5000))
+    # Time proportional to n_unique_words
+    # test_matrix = cp.random.randint(10, 500000, (6, 5000), dtype=cp.int32)
+    weight_array_ones = cp.ones(10, dtype=cp.float32)
+    print(repeat(weighted_word_count, (test_matrix, weight_array_ones), n_repeat=100))
 
     train_data_path = "archive/yoochoose-clicks.dat"
     train_df = cudf.read_csv(train_data_path,

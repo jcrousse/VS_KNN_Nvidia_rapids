@@ -27,6 +27,54 @@ void weighted_wordcount_kernel(
 ''', 'weighted_wordcount_kernel')
 
 
+weighted_wordcount2D_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void weighted_wordcount2D_kernel(
+                            const int* word_matrix, 
+                            const float* weight, 
+                            const int* unique_words,  
+                            const int num_rows, 
+                            const int num_cols,  
+                            const int n_unique_words, 
+                            float* weighted_count) {
+
+    int row = blockDim.x * blockIdx.x + threadIdx.x;
+    int col = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (row < num_rows && col < num_cols){
+        int word = word_matrix[(row * num_cols + col)];
+        if (word != 0){
+            for (int i = 0; i < n_unique_words; i += 1){ 
+                if (word == unique_words[i]){
+                    atomicAdd(&weighted_count[i], weight[row]);
+                }
+            }
+        }
+   }
+}
+''', 'weighted_wordcount2D_kernel')
+
+# todo: create a weight matrix and then sum all columns into a singe vector
+generate_weight_matrix_kernel = cp.RawKernel(r'''
+extern "C" __global__
+void generate_weight_matrix_kernel(
+                            const int* word_matrix, 
+                            const float* weight, 
+                            const int* unique_words,  
+                            const int num_rows, 
+                            const int n_unique_words,
+                            float* weight_matrix) {
+
+    int row = blockDim.x * blockIdx.x + threadIdx.x;
+    int col = blockDim.y * blockIdx.y + threadIdx.y;
+
+    if (row < num_rows && col < n_unique_words){
+        weight_matrix[row * n_unique_words + col] = weight[row]
+   }
+}
+''', 'generate_weight_matrix_kernel')
+
+
 def weighted_word_count(word_matrix, row_weights):
     """
     :param word_matrix: A 2-D CuPy array of words (integer 1...N). O means missing value and will be ignored
@@ -38,19 +86,27 @@ def weighted_word_count(word_matrix, row_weights):
     elif word_matrix.ndim != 2:
         raise ValueError("word_matrix must be a 1-D or 2-D array")
     num_rows, num_cols = word_matrix.shape
-    n_blocks_x = int(num_rows / 8) + 1
-    n_blocks_y = int(num_cols / 8) + 1
+    n_blocks_x = int(num_rows / 16) + 1
+    n_blocks_y = int(num_cols / 16) + 1
     unique_words = cp.unique(word_matrix)
     if unique_words[0] == 0:
         unique_words = unique_words[1:]
     n_unique_words = len(unique_words)
     n_blocks_z = int(n_unique_words / 4) + 1
     weighted_count = cp.zeros((n_unique_words,), dtype=np.float32)
-    weighted_wordcount_kernel(
-        (n_blocks_x, n_blocks_y, n_blocks_z),
-        (8, 8, 4),
+
+    # array_size = len(unique_words) * int(word_matrix.shape[0])
+    # gna = cp.reshape(cp.arange(array_size), (int(word_matrix.shape[0]), len(unique_words)))
+    # gnou = cp.sum(gna, axis=1)
+
+    # weighted_wordcount_kernel(
+    #     (n_blocks_x, n_blocks_y, n_blocks_z),
+    #     (8, 8, 4),
+    #     (word_matrix, row_weights, unique_words, num_rows, num_cols, n_unique_words, weighted_count)
+    # )
+    weighted_wordcount2D_kernel(
+        (n_blocks_x, n_blocks_y),
+        (16, 16),
         (word_matrix, row_weights, unique_words, num_rows, num_cols, n_unique_words, weighted_count)
     )
-    # TODO: The number of threads per block should be a round multiple of the warp size,
-    #  which is 32 on all current hardware.
     return unique_words, weighted_count

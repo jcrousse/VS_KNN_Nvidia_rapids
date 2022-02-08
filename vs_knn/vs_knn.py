@@ -51,7 +51,7 @@ class CupyVsKnnModel(VsKnnModel):
         self.item_to_sessions = OneDimVsknnIndex()
         self.session_to_items = TwoDimVsknnIndex()
 
-        self.name_map = NameIdxMap()
+        self.name_map = NameIdxMap(skips_missings=True)
 
         if decay == 'linear':
             self.weight_function = linear_decay
