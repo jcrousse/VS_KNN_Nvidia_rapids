@@ -107,7 +107,7 @@ if __name__ == '__main__':
     #  - Pre initialize the looong similarity vectors
     #  - Smaller vectors, but with indices to keep track of who writes where
     #  - Use cupy.nonzero to find sessions/items and their weight
-    #  - Benchmark for different data set sizes. How does time take grow with dataset?
+    #  - Benchmark for different data set sizes. How does it scale with data
 
     # sessions = random.choices(train_df[SESSION_ID].unique(), k=100)
     # session_items = [
@@ -115,10 +115,16 @@ if __name__ == '__main__':
     #     for session in sessions
     # ]
 
-    session_items = get_test_sessions(train_df)
-    del train_df
-    gc.collect()
 
-    print(repeat(get_weighted_count, (session_items, session_tape, items_tape, session_similarity), n_repeat=10))
+    # del train_df
+    # gc.collect()
 
-    a = 1
+    for idx in range(5 * 10 ** 6, 40 * 10 ** 6, 5 * 10 ** 6):
+        session_items = get_test_sessions(train_df)
+        session_tape_subset = session_tape[0:idx]
+        items_tape_subset = items_tape[0:idx]
+        session_similarity = cp.zeros(len(cp.unique(session_tape_subset)), dtype=cp.dtype('float32'))
+        item_similarity = cp.zeros(len(cp.unique(items_tape_subset)), dtype=cp.dtype('float32'))
+        print(repeat(get_weighted_count, (session_items, session_tape_subset, items_tape_subset, session_similarity), n_repeat=100))
+
+
