@@ -49,10 +49,10 @@ def tiny_vsknn_df() -> cudf.DataFrame:
     """
     sessions = [
         [1, 3, 4, 5],
-        [2, 3, 4, 5],
-        [3, 4, 5, 1, 2],
-        [4, 5, 1, 2, 3],
-        [5, 1, 2, 3, 1]
+        [2, 6, 4, 5],
+        [1, 2, 6, 7, 5],
+        [1, 2, 6, 7, 4],
+        [1, 2, 6, 7, 3]
     ]
     session_ids = flatten2d([['sess' + str(i)] * len(e) for i, e in enumerate(sessions)])
     timestamps = flatten2d([list(range(len(e))) for e in sessions])
@@ -69,7 +69,7 @@ def tiny_vsknn_df() -> cudf.DataFrame:
 
 @pytest.fixture
 def tiny_session():
-    return [6, 4, 5]
+    return [3, 4, 5]
 
 
 def flatten2d(matrix):
