@@ -87,7 +87,7 @@ def test_a_model(model, test_data):
 
                 if y in items_rec:
                     total_hits += 1
-                    hr20 = total_hits / n_treated
+                    hr20 = total_hits / (n_treated + 1)
                     pbar.set_postfix({'HR@20': hr20})
 
     time_per_iter = pbar.format_dict['elapsed'] / pbar.format_dict['n']

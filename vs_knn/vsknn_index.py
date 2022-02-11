@@ -38,7 +38,7 @@ class OneDimVsknnIndex:
 
         key_table["len"] = key_table["end_idx"] - key_table["start_idx"] + 1
 
-        self.id_to_idx = key_table.values
+        self.id_to_idx = key_table.values.astype(cp.uint)
 
         dmf = round((self.value_array.nbytes + self.id_to_idx.nbytes) / 10 ** 6, 2)
         print(f"Device memory footprint for index objects: {dmf} Mb ({index_key} index)")
