@@ -46,7 +46,6 @@ void weighted_wordcount2D_kernel(
         if (word != 0){
             for (int i = 0; i <= n_unique_words; i += 1){ 
                 if (word == unique_words[i]){
-                    printf("row: %d, col: %d, word: %d\n", row, col, word);
                     atomicAdd(&weighted_count[i], weight[row]);
                 }
             }
