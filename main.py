@@ -82,8 +82,7 @@ def test_a_model(model, test_data):
             x, y = session_to_xy(test_session)
             if x is not None:
                 items_pred, item_scores = model.predict(x)
-
-                selection = cp.flip(cp.argsort(item_scores)[-20:])
+                selection = [int(e) for e in cp.flip(cp.argsort(item_scores)[-20:])]
                 items_rec = items_pred[selection]
 
                 if y in items_rec:
@@ -111,7 +110,8 @@ if __name__ == '__main__':
         test_set = read_dataset('test_data', project_config, 'cudf')
 
         session_to_items, item_to_sessions = setup_vsknn_indices(project_config, train_set, 'pandas')
-        cp_model = CupyVsKnnModel(top_k=project_config['top_k'])
+        cp_model = CupyVsKnnModel(top_k=project_config['top_k'], max_item_per_session=10, max_sessions_per_items=5000)
+        cp_model.train(train_set)
 
         train_sessions = train_set[SESSION_ID].unique().values
         test_sessions = test_set[SESSION_ID].unique().values
@@ -122,7 +122,7 @@ if __name__ == '__main__':
             random_id = np.random.randint(0, len(train_sessions))
             random_session_id = train_sessions[random_id]
             session = session_to_items[random_session_id]
-            session_clean = session[cp.where(session > 0)]
+            session_clean = [int(e) for e in session[cp.where(session > 0)]]
             items, scores = cp_model.predict(session_clean)
             return items, scores
 

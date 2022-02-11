@@ -1,8 +1,6 @@
 import cudf
 import random
 
-import numpy as np
-
 from vs_knn.col_names import SESSION_ID, TIMESTAMP, ITEM_ID
 from vs_knn.vs_knn import CupyVsKnnModel
 from vs_knn.weighted_word_count import weighted_word_count
@@ -51,6 +49,7 @@ if __name__ == '__main__':
     model = CupyVsKnnModel(top_k=100, max_sessions_per_items=5000, max_item_per_session=10)
     model.train(train_df)
     print("model trained!")
+    model.predict([214806142])
 
     session_items = get_test_sessions(train_df)
     print("Train exammples prepared")
