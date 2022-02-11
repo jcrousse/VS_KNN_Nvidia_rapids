@@ -1,7 +1,8 @@
 import pytest
 import os
 import cupy as cp
-
+import cudf
+from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
 
 @pytest.fixture
 def single_row() -> cp.array:
@@ -38,3 +39,38 @@ def youchoose_raw_str() -> str:
 @pytest.fixture
 def youchoose_preprocessed() -> str:
     return os.path.join(os.path.dirname(__file__), 'data', 'youchoose_preprocessed.csv')
+
+
+@pytest.fixture
+def tiny_vsknn_df() -> cudf.DataFrame:
+    """
+    Test: User session is [6, 4, 5], k = 2, nearest sessions should be the first 2 below.
+    suggested items should be 3, 1, 2 in that order.
+    """
+    sessions = [
+        [1, 3, 4, 5],
+        [2, 3, 4, 5],
+        [3, 4, 5, 1, 2],
+        [4, 5, 1, 2, 3],
+        [5, 1, 2, 3, 1]
+    ]
+    session_ids = flatten2d([['sess' + str(i)] * len(e) for i, e in enumerate(sessions)])
+    timestamps = flatten2d([list(range(len(e))) for e in sessions])
+    item_ids = flatten2d(sessions)
+
+    df = cudf.DataFrame(data={
+        SESSION_ID: session_ids,
+        TIMESTAMP: timestamps,
+        ITEM_ID: item_ids
+    })
+
+    return df
+
+
+@pytest.fixture
+def tiny_session():
+    return [6, 4, 5]
+
+
+def flatten2d(matrix):
+    return [e for row in matrix for e in row]

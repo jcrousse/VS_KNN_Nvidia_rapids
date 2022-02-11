@@ -44,8 +44,9 @@ void weighted_wordcount2D_kernel(
     if (row < num_rows && col < num_cols){
         int word = word_matrix[(row * num_cols + col)];
         if (word != 0){
-            for (int i = 0; i < n_unique_words; i += 1){ 
+            for (int i = 0; i <= n_unique_words; i += 1){ 
                 if (word == unique_words[i]){
+                    printf("row: %d, col: %d, word: %d\n", row, col, word);
                     atomicAdd(&weighted_count[i], weight[row]);
                 }
             }
@@ -53,26 +54,6 @@ void weighted_wordcount2D_kernel(
    }
 }
 ''', 'weighted_wordcount2D_kernel')
-
-# todo: create a weight matrix and then sum all columns into a singe vector
-generate_weight_matrix_kernel = cp.RawKernel(r'''
-extern "C" __global__
-void generate_weight_matrix_kernel(
-                            const int* word_matrix, 
-                            const float* weight, 
-                            const int* unique_words,  
-                            const int num_rows, 
-                            const int n_unique_words,
-                            float* weight_matrix) {
-
-    int row = blockDim.x * blockIdx.x + threadIdx.x;
-    int col = blockDim.y * blockIdx.y + threadIdx.y;
-
-    if (row < num_rows && col < n_unique_words){
-        weight_matrix[row * n_unique_words + col] = weight[row]
-   }
-}
-''', 'generate_weight_matrix_kernel')
 
 
 def weighted_word_count(word_matrix, row_weights):

@@ -78,15 +78,18 @@ class CupyVsKnnModel(VsKnnModel):
 
         del processed_df
         gc.collect()
-        self.name_map.remove_col(SESSION_ID)
+        # self.name_map.remove_col(SESSION_ID)
 
     def predict(self, query_items):
         query_idx = self.name_map.name_to_idx(query_items, ITEM_ID)
-        sessions, session_similarities = self.get_session_similarities(query_idx)
-        if len(sessions) > self.top_k:
-            sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
-        unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
-        ret_item_names = self.name_map.idx_to_name([int(e) for e in cp.asarray(unique_items)], ITEM_ID)
+        if query_idx:
+            sessions, session_similarities = self.get_session_similarities(query_idx)
+            if len(sessions) > self.top_k:
+                sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
+            unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
+            ret_item_names = self.name_map.idx_to_name([int(e) for e in cp.asarray(unique_items)], ITEM_ID)
+        else:
+            ret_item_names, w_sum_items = [], cp.array([])
         return ret_item_names, w_sum_items
 
     def _step1_ingest_query(self, query_items):
@@ -99,7 +102,7 @@ class CupyVsKnnModel(VsKnnModel):
         return sessions, session_similarities
 
     def keep_topk_sessions(self, sessions, session_similarities):
-        selection = cp.argsort(session_similarities)[0:self.top_k]
+        selection = cp.argsort(session_similarities)[-self.top_k:]
         return sessions[selection], session_similarities[selection]
 
     def get_item_similarities(self, sessions, session_similarities):
