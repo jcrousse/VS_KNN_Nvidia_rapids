@@ -7,6 +7,8 @@ import gc
 
 import cudf
 import numpy as np
+import pandas as pd
+
 from vs_knn.col_names import SESSION_ID, ITEM_ID
 
 
@@ -37,6 +39,13 @@ class NameIdxMap:
         for col in self.columns_to_convert:
             self._create_col_mappings(df, col)
 
+        _padding = cudf.DataFrame(
+            columns=self._transformed_df.columns,
+            data={ITEM_ID: [0], SESSION_ID: [0]},
+            dtype=self._transformed_df.dtypes.to_dict())
+
+        self._transformed_df = cudf.concat([_padding, self._transformed_df])
+
         return self
 
     def name_to_idx(self, query, column_name):
@@ -58,9 +67,20 @@ class NameIdxMap:
     def _create_col_mappings(self, df, col):
         """ creates name_to_idx and idx_to_name mappings for the given column 'col' """
         ordered_names = df[col].unique()
-        name_to_idx_series = ordered_names.reset_index().set_index(col)['index']
+
+        name_to_idx_series = ordered_names.reset_index()
+        name_to_idx_series['index'] = name_to_idx_series['index'] + 1
+        name_to_idx_series = name_to_idx_series.set_index(col)['index']
+
         self._name_to_idx_map[col] = name_to_idx_series.to_pandas().to_dict()
-        self._idx_to_name_map[col] = ordered_names.to_pandas().values
+        idx_to_name = ordered_names.to_pandas()
+
+        idx_to_name_pad = pd.concat([
+            pd.Series([idx_to_name[0]]),
+            idx_to_name
+        ])
+
+        self._idx_to_name_map[col] = idx_to_name_pad.values
 
         self._transformed_df = self._transformed_df.set_index(col)\
             .join(name_to_idx_series)\

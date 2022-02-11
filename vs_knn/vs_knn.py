@@ -60,6 +60,8 @@ class CupyVsKnnModel(VsKnnModel):
 
     def train(self, train_df: cudf.DataFrame):
 
+        train_df = train_df.drop_duplicates(subset=[SESSION_ID, ITEM_ID], keep='first')
+
         if self.max_sessions_per_items:
             train_df = self._keep_n_latest_sessions(train_df)
 
