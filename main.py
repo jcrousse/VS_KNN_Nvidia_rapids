@@ -82,7 +82,7 @@ def test_a_model(model, test_data):
             x, y = session_to_xy(test_session)
             if x is not None:
                 items_pred, item_scores = model.predict(x)
-                selection = [int(e) for e in cp.flip(cp.argsort(item_scores)[-20:])]
+                selection = cp.flip(cp.argsort(item_scores)[-20:])
                 items_rec = items_pred[selection]
 
                 if y in items_rec:
@@ -133,4 +133,4 @@ if __name__ == '__main__':
         time_per_iter, hr = test_a_model(cp_model, test_set)
 
         print(f"HR@20: {hr}")
-        print(f"{time_per_iter * 1000} miliseconds per test example")
+        print(f"{time_per_iter * 1000} milliseconds per test example")

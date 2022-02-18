@@ -11,7 +11,7 @@ def test_name_mapper_int(youchoose_raw_int):
 
     df = cudf.read_csv(youchoose_raw_int,
                        names=YOUCHOOSE_COLUMNS,
-                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)
+                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)[[SESSION_ID, ITEM_ID]]
 
     convert_then_retrieve(df)
 
@@ -22,7 +22,7 @@ def test_name_mapper_str(youchoose_raw_str):
 
     df = cudf.read_csv(youchoose_raw_str,
                        names=YOUCHOOSE_COLUMNS,
-                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)
+                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)[[SESSION_ID, ITEM_ID]]
 
     convert_then_retrieve(df)
 
@@ -37,14 +37,16 @@ def convert_then_retrieve(df):
 
     assert all([before == after for before, after in zip(random_query, query_names)])
 
-    transformed_df = nip.get_transformed_df().to_pandas()
-    item_idx_examples = rand_gen.choices(transformed_df[ITEM_ID].unique(), k=5)
-    sessions_idx = list(transformed_df[transformed_df[ITEM_ID].isin(item_idx_examples)][SESSION_ID].values)
-    session_names = set(nip.idx_to_name(sessions_idx, SESSION_ID))
+    transformed_df = nip.get_transformed_df()
+    item_idx_examples = cp.array(rand_gen.choices(transformed_df[ITEM_ID].unique(), k=5))
+    sessions_idx = transformed_df[transformed_df[ITEM_ID].isin(item_idx_examples)][SESSION_ID].values
+    session_names = nip.idx_to_name(sessions_idx, SESSION_ID)
+    session_names_set = set(cp.asnumpy(session_names))
 
-    original_df = df.to_pandas()
+    original_df = df
     original_items = nip.idx_to_name(item_idx_examples, ITEM_ID)
-    original_session_names = set(original_df[original_df[ITEM_ID].isin(original_items)][SESSION_ID].values)
+    original_session_names = original_df[original_df[ITEM_ID].isin(original_items)][SESSION_ID].values
+    original_session_names_set = set(cp.asnumpy(original_session_names))
 
-    assert session_names == original_session_names
+    assert session_names_set == original_session_names_set
 

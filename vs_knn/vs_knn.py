@@ -89,7 +89,7 @@ class CupyVsKnnModel(VsKnnModel):
             if len(sessions) > self.top_k:
                 sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
             unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
-            ret_item_names = self.name_map.idx_to_name(cp.asnumpy(unique_items), ITEM_ID)
+            ret_item_names = self.name_map.idx_to_name(unique_items, ITEM_ID)
         else:
             ret_item_names, w_sum_items = [], cp.array([])
         return ret_item_names, w_sum_items

@@ -7,6 +7,7 @@ import gc
 
 import cudf
 import numpy as np
+import cupy as cp
 import pandas as pd
 
 from vs_knn.col_names import SESSION_ID, ITEM_ID
@@ -25,7 +26,7 @@ class NameIdxMap:
 
         self.columns_to_convert = columns_to_convert if columns_to_convert else [SESSION_ID, ITEM_ID]
         self._name_to_idx_map = {col: {} for col in self.columns_to_convert}
-        self._idx_to_name_map = {col: np.array([]) for col in self.columns_to_convert}
+        self._idx_to_name_map = {col: cp.array([]) for col in self.columns_to_convert}
 
         self._transformed_df = cudf.DataFrame()
         self._fit = False
@@ -80,7 +81,7 @@ class NameIdxMap:
             idx_to_name
         ])
 
-        self._idx_to_name_map[col] = idx_to_name_pad.values
+        self._idx_to_name_map[col] = cp.array(idx_to_name_pad.values)
 
         self._transformed_df = self._transformed_df.set_index(col)\
             .join(name_to_idx_series)\
