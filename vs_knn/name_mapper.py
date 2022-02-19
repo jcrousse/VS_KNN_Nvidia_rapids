@@ -6,7 +6,6 @@ Then it provides dictionaries and arrays to convert the names to ids and vice ve
 import gc
 
 import cudf
-import numpy as np
 import cupy as cp
 import pandas as pd
 

@@ -42,14 +42,15 @@ def no_decay(n):
 
 
 class CupyVsKnnModel(VsKnnModel):
-    def __init__(self,  decay='linear', top_k=100, max_sessions_per_items=None, max_item_per_session=None):
+    def __init__(self,  decay='linear', top_k=100, max_sessions_per_items=5000, max_item_per_session=10):
         super().__init__(top_k)
 
         self.max_sessions_per_items = max_sessions_per_items
         self.max_items_per_session = max_item_per_session
 
-        self.item_to_sessions = OneDimVsknnIndex()
-        self.session_to_items = TwoDimVsknnIndex()
+        self._item_id_to_idx, self._item_values = cp.empty(1), cp.empty(1)
+        self._sess_id_to_idx, self._sess_values = cp.empty(1), cp.empty(1)
+        self._buffer = cp.zeros(max_sessions_per_items * max_item_per_session, dtype=cp.intc)
 
         self.name_map = NameIdxMap(skips_missings=True)
 
@@ -58,7 +59,7 @@ class CupyVsKnnModel(VsKnnModel):
         else:
             self.weight_function = no_decay
 
-    def train(self, train_df: cudf.DataFrame):
+    def train(self, train_df: cudf.DataFrame, verbose=True):
 
         train_df = train_df.drop_duplicates(subset=[SESSION_ID, ITEM_ID], keep='first')
 
@@ -75,8 +76,15 @@ class CupyVsKnnModel(VsKnnModel):
         del train_df
         gc.collect()
 
-        self.item_to_sessions = self.item_to_sessions.build_index(processed_df, ITEM_ID, SESSION_ID)
-        self.session_to_items = self.session_to_items.build_index(processed_df, SESSION_ID, ITEM_ID)
+        self._item_id_to_idx, self._item_values = OneDimVsknnIndex.build_idx_arrays(processed_df, ITEM_ID, SESSION_ID)
+        self._sess_id_to_idx, self._sess_values = OneDimVsknnIndex.build_idx_arrays(processed_df, SESSION_ID, ITEM_ID)
+
+        if verbose:
+            index_arrays = [self._item_id_to_idx, self._item_values,
+                            self._sess_id_to_idx, self._sess_values, self._buffer]
+            total_bytes = sum([ia.nbytes for ia in index_arrays])
+            dmf = round(total_bytes / 10 ** 6, 2)
+            print(f"Device memory footprint for index objects: {dmf} Mb)")
 
         del processed_df
         gc.collect()

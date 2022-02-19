@@ -22,14 +22,21 @@ class OneDimVsknnIndex:
         self.id_to_idx: cp.array = None
 
     def build_index(self, train_data: cudf.DataFrame, index_key=ITEM_ID, index_value=SESSION_ID):
+        self.id_to_idx, self.value_array = self.build_idx_arrays(train_data, index_key, index_value)
 
+        dmf = round((self.value_array.nbytes + self.id_to_idx.nbytes) / 10 ** 6, 2)
+        print(f"Device memory footprint for index objects: {dmf} Mb ({index_key} index)")
+        return self
+
+    @staticmethod
+    def build_idx_arrays(train_data: cudf.DataFrame, index_key=ITEM_ID, index_value=SESSION_ID):
         start_end_idx_df = train_data \
             .sort_values(by=index_key) \
             .reset_index().drop(columns="index") \
             .reset_index().rename(columns={"index": "end_idx"}) \
             .reset_index().rename(columns={"index": "start_idx"})
 
-        self.value_array = start_end_idx_df[index_value].values.astype(cp.uintc)
+        value_array = start_end_idx_df[index_value].values.astype(cp.uintc)
 
         key_table = start_end_idx_df. \
             groupby(index_key). \
@@ -38,11 +45,9 @@ class OneDimVsknnIndex:
 
         key_table["len"] = key_table["end_idx"] - key_table["start_idx"] + 1
 
-        self.id_to_idx = key_table.values.astype(cp.uintc)
+        id_to_idx = key_table.values.astype(cp.uintc)
 
-        dmf = round((self.value_array.nbytes + self.id_to_idx.nbytes) / 10 ** 6, 2)
-        print(f"Device memory footprint for index objects: {dmf} Mb ({index_key} index)")
-        return self
+        return id_to_idx, value_array
 
     def __getitem__(self, query):
         values_idx = self.id_to_idx[[int(q) for q in query]]
@@ -84,3 +89,4 @@ class TwoDimVsknnIndex:
 
     def __getitem__(self, query):
         return self.value_array[query, :]
+
