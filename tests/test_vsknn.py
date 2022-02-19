@@ -1,4 +1,3 @@
-import pytest
 from vs_knn.vs_knn import CupyVsKnnModel
 import cudf
 
@@ -24,8 +23,3 @@ def test_cupymodel(tiny_vsknn_df, tiny_session):
 
 def test_cupymodel_str():
     pass
-
-
-def test_cupymodel_cudfmodel():
-    pass
-
