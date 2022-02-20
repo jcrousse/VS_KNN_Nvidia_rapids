@@ -14,17 +14,6 @@ from tqdm import tqdm
 MAX_SESSIONS = None  # use value such as 10 ** 6 to save memory and time for development
 
 
-# TODO:
-#  -No index. The NameMapper returns the ids -- DONE (untested)
-#  -The model itself has star/end/values vectors for items and for sessions -- DONE (untested)
-#  -the start-end and values vectors are passed to a kernel, along with the array of ids
-#  -Unit test for that custom kernel: should just fill two arrays of 0s with value and weight when match -- DONE
-#  -Weight vector is weight per id -- DONE
-#  -(0.5ms) Get unique values of selected values vector
-#  -Second kernel: values vector, unique values vector, do some clever indexing*, and if match, adds weight to
-#  final weight vector.
-#  *Clever indexing: either 2D kernel, or modulo <values_per_id>  -- DONE
-#  -returns values and weight vectors
 
 def get_arguments():
     """Get this script's command line arguments"""

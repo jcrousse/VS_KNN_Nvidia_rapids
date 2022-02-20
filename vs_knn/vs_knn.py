@@ -7,6 +7,8 @@ from vs_knn.vsknn_index import OneDimVsknnIndex
 from vs_knn.name_mapper import NameIdxMap
 from vs_knn.custom_kernels import copy_values_kernel, groubpy_kernel
 
+int_type = cp.intc
+
 
 class VsKnnModel:
     def __init__(self, top_k=100):
@@ -50,7 +52,7 @@ class CupyVsKnnModel(VsKnnModel):
         self._sess_id_to_idx, self._sess_values = cp.empty(1), cp.empty(1)
 
         self._buffer_shape = max_sessions_per_items * max_item_per_session
-        self._values_buffer = cp.zeros(self._buffer_shape, dtype=cp.intc)
+        self._values_buffer = cp.zeros(self._buffer_shape, dtype=int_type)
         self._weights_buffer = cp.zeros(self._buffer_shape, dtype=cp.float32)
 
         self.name_map = NameIdxMap(skips_missings=True)
@@ -77,8 +79,10 @@ class CupyVsKnnModel(VsKnnModel):
         del train_df
         gc.collect()
 
-        self._item_id_to_idx, self._item_values = OneDimVsknnIndex.build_idx_arrays(processed_df, ITEM_ID, SESSION_ID)
-        self._sess_id_to_idx, self._sess_values = OneDimVsknnIndex.build_idx_arrays(processed_df, SESSION_ID, ITEM_ID)
+        self._item_id_to_idx, self._item_values = \
+            OneDimVsknnIndex.build_idx_arrays(processed_df, ITEM_ID, SESSION_ID, int_type=int_type)
+        self._sess_id_to_idx, self._sess_values = \
+            OneDimVsknnIndex.build_idx_arrays(processed_df, SESSION_ID, ITEM_ID, int_type=int_type)
 
         # todo: change OneDimVsknnIndex so it does not add the third column in the first place
         self._item_id_to_idx = self._item_id_to_idx[:, 0:2]

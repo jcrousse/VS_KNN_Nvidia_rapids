@@ -29,14 +29,14 @@ class OneDimVsknnIndex:
         return self
 
     @staticmethod
-    def build_idx_arrays(train_data: cudf.DataFrame, index_key=ITEM_ID, index_value=SESSION_ID):
+    def build_idx_arrays(train_data: cudf.DataFrame, index_key=ITEM_ID, index_value=SESSION_ID, int_type=cp.intc):
         start_end_idx_df = train_data \
             .sort_values(by=index_key) \
             .reset_index().drop(columns="index") \
             .reset_index().rename(columns={"index": "end_idx"}) \
             .reset_index().rename(columns={"index": "start_idx"})
 
-        value_array = start_end_idx_df[index_value].values.astype(cp.uintc)
+        value_array = start_end_idx_df[index_value].values.astype(int_type)
 
         key_table = start_end_idx_df. \
             groupby(index_key). \
@@ -45,7 +45,7 @@ class OneDimVsknnIndex:
 
         key_table["len"] = key_table["end_idx"] - key_table["start_idx"] + 1
 
-        id_to_idx = key_table.values.astype(cp.uintc)
+        id_to_idx = key_table.values.astype(int_type)
 
         return id_to_idx, value_array
 

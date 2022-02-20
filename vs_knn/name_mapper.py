@@ -80,6 +80,7 @@ class NameIdxMap:
             idx_to_name
         ])
 
+        # todo: optional numpy str array + flag for numpy conversion if needed?
         self._idx_to_name_map[col] = cp.array(idx_to_name_pad.values)
 
         self._transformed_df = self._transformed_df.set_index(col)\
