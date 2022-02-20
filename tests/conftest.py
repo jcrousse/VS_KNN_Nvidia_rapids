@@ -44,8 +44,35 @@ def youchoose_preprocessed() -> str:
 @pytest.fixture
 def tiny_vsknn_df() -> cudf.DataFrame:
     """
-    Test: User session is [6, 4, 5], k = 2, nearest sessions should be the first 2 below.
+    Test: User session is [3, 4, 5], k = 2, nearest sessions should be the first 2 below.
     suggested items should be 3, 1, 2 in that order.
+    Item weights:
+        5: 1.
+        4: 0.66
+        3: 0.33
+
+        session per items:
+        1: [1, 3, 4, 5]
+        2: [2, 3, 4, 5]
+        3: [1, 5]
+        4: [1, 2, 4]
+        5: [1, 2, 3]
+        6: [2, 3, 4, 5]
+
+    similarity session 1:  1. + .66 + .33   = 2.
+    similarity session 2:  1. + .66         = 1.66.
+    similarity session 3:  1.               = 1.
+    similarity session 4:  .66              = .66
+    similarity session 5:  .33              = .33
+
+    k = 2, so only sessions 1 and 2 matter
+
+    similarity item 1: 2. + 0.      = 2.
+    similarity item 2: 0. + 1.66    = 1.66
+    similarity item 3: 2. + 0.      = 2.
+    similarity item 4: 2. + 1.66    = 3.66
+    similarity item 5: 2. + 1.66    = 3.66
+    similarity item 6: 0. + 1.66    = 1.66
     """
     sessions = [
         [1, 3, 4, 5],
@@ -54,7 +81,8 @@ def tiny_vsknn_df() -> cudf.DataFrame:
         [1, 2, 6, 7, 4],
         [1, 2, 6, 7, 3]
     ]
-    session_ids = flatten2d([['sess' + str(i)] * len(e) for i, e in enumerate(sessions)])
+    # session_ids = flatten2d([['sess' + str(i)] * len(e) for i, e in enumerate(sessions)])
+    session_ids = flatten2d([[int(i)] * len(e) for i, e in enumerate(sessions)])
     timestamps = flatten2d([list(range(len(e))) for e in sessions])
     item_ids = flatten2d(sessions)
 

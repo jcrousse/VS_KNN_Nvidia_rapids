@@ -1,6 +1,9 @@
+import pytest
 import cupy as cp
 import cudf
 from cupyx.time import repeat
+
+kernels = pytest.importorskip("vs_knn.custom_kernels")
 
 sessions_per_item, items_per_session = 5000, 10
 start_idx = [1000, 5000, 10000, 15000, 20000, 25000, 30000]
@@ -21,68 +24,11 @@ weight_buffer = cp.random.random(buffer_shape, dtype=cp.float32)
 
 unique_values = cp.unique(values_buffer)
 
-copy_values_kernel = cp.RawKernel(r'''
-extern "C" __global__
-void copy_values_kernel(
-                            const int* idx_array, 
-                            const int* in_values, 
-                            const float* in_weight,
-                            const int row_len,
-                            const int col_len, 
-                            const int buffer_len,
-                            int* out_values,
-                            float* out_weights) {
-
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-    
-    int row = tid / row_len;
-    int col = tid % row_len;
-    
-    int value_idx = idx_array[row * 2] + col;
-    
-    if (tid < buffer_len){
-        if (value_idx < idx_array[row * 2 + 1]){
-            out_values[tid] = in_values[value_idx];
-            out_weights[tid] = in_weight[row];
-        }
-        else{
-            out_values[tid] = 0;
-            out_weights[tid] = 0;
-        }
-    }
-
-}
-''', 'copy_values_kernel')
-
-groubpy_kernel = cp.RawKernel(r'''
-extern "C" __global__
-void groubpy_kernel(
-                            const int* in_values, 
-                            const float* in_weight,
-                            const int* unique_values,
-                            const int n_unique_values,
-                            const int buffer_len,
-                            float* out_weights) {
-
-    int tid = blockDim.x * blockIdx.x + threadIdx.x;
-
-    int row = tid / n_unique_values;
-    int col = tid % n_unique_values;
-
-    int in_value = in_values[row];
-    if (tid < buffer_len && in_values[row] == unique_values[col]){
-        atomicAdd(&out_weights[col], in_weight[row]);
-        //printf("row: %d col: %d value: %f \n", row, col, in_weight[row]);
-    }
-
-
-}
-''', 'groubpy_kernel')
-
 
 def test_copy_kernel():
-    run_copy_kernel()
-    _ = [value_array_check(i) for i in [0, 100, 1000, 5000, 5005]]
+    for _ in range(3):
+        run_copy_kernel()
+        _ = [value_array_check(i) for i in [0, 100, 1000, 5000, 5004, 5005]]
 
 
 def run_copy_kernel():
@@ -90,15 +36,15 @@ def run_copy_kernel():
                    sessions_per_item, items_per_session, buffer_shape,
                    out_values, out_weights)
     t_per_block = 256
-    n_blocks = int(len(values_array) / t_per_block) + 1
-    copy_values_kernel((n_blocks, ), (t_per_block,), kernel_args)
+    n_blocks = int(len(values_buffer) / t_per_block) + 1
+    kernels.copy_values_kernel((n_blocks, ), (t_per_block,), kernel_args)
 
 
 def value_array_check(out_idx):
     idx_in_input_session = out_idx // sessions_per_item
     idx_in_hist_sessions = out_idx % sessions_per_item
     value_idx = start_idx[idx_in_input_session] + idx_in_hist_sessions
-    if idx_in_hist_sessions > len_per_idx[idx_in_input_session] - 1:
+    if idx_in_hist_sessions > len_per_idx[idx_in_input_session] :
         expected_value = 0
         expected_weight = 0.0
     else:
@@ -130,7 +76,7 @@ def run_groupby_kernel():
                    out_weights_groupby)
     t_per_block = 256
     n_blocks = int( n_items/ t_per_block) + 1
-    groubpy_kernel((n_blocks, ), (t_per_block,), kernel_args)
+    kernels.groubpy_kernel((n_blocks, ), (t_per_block,), kernel_args)
     return out_weights_groupby
 
 
@@ -143,8 +89,9 @@ def weight_array_check(calculated_weights):
     expected_weights = df['agg_val'].values
 
     def f_to_i(x):
-        return round(float(x) * 100)
+        return round(float(x) * 10)
     comparison_key = [int(ek) == int(ck) for ek, ck in zip(unique_values, df.index.values)]
     comparison_weights = [f_to_i(ew) == f_to_i(cw) for ew, cw in zip(expected_weights, calculated_weights)]
 
-    assert all(comparison_key) and all(comparison_weights)
+    assert all(comparison_key)
+    assert all(comparison_weights)

@@ -1,13 +1,11 @@
 import gc
 
-import pandas as pd
 import cudf
 import cupy as cp
-from vs_knn.col_names import SESSION_ID, ITEM_ID, PI_I, TIMESTAMP
-from vs_knn.index_builder import IndexBuilder
-from vs_knn.weighted_word_count import weighted_word_count
-from vs_knn.vsknn_index import OneDimVsknnIndex, TwoDimVsknnIndex
+from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
+from vs_knn.vsknn_index import OneDimVsknnIndex
 from vs_knn.name_mapper import NameIdxMap
+from vs_knn.custom_kernels import copy_values_kernel, groubpy_kernel
 
 
 class VsKnnModel:
@@ -50,7 +48,10 @@ class CupyVsKnnModel(VsKnnModel):
 
         self._item_id_to_idx, self._item_values = cp.empty(1), cp.empty(1)
         self._sess_id_to_idx, self._sess_values = cp.empty(1), cp.empty(1)
-        self._buffer = cp.zeros(max_sessions_per_items * max_item_per_session, dtype=cp.intc)
+
+        self._buffer_shape = max_sessions_per_items * max_item_per_session
+        self._values_buffer = cp.zeros(self._buffer_shape, dtype=cp.intc)
+        self._weights_buffer = cp.zeros(self._buffer_shape, dtype=cp.float32)
 
         self.name_map = NameIdxMap(skips_missings=True)
 
@@ -79,16 +80,20 @@ class CupyVsKnnModel(VsKnnModel):
         self._item_id_to_idx, self._item_values = OneDimVsknnIndex.build_idx_arrays(processed_df, ITEM_ID, SESSION_ID)
         self._sess_id_to_idx, self._sess_values = OneDimVsknnIndex.build_idx_arrays(processed_df, SESSION_ID, ITEM_ID)
 
-        if verbose:
-            index_arrays = [self._item_id_to_idx, self._item_values,
-                            self._sess_id_to_idx, self._sess_values, self._buffer]
-            total_bytes = sum([ia.nbytes for ia in index_arrays])
-            dmf = round(total_bytes / 10 ** 6, 2)
-            print(f"Device memory footprint for index objects: {dmf} Mb)")
+        # todo: change OneDimVsknnIndex so it does not add the third column in the first place
+        self._item_id_to_idx = self._item_id_to_idx[:, 0:2]
+        self._sess_id_to_idx = self._sess_id_to_idx[:, 0:2]
 
         del processed_df
         gc.collect()
-        # self.name_map.remove_col(SESSION_ID)
+
+        if verbose:
+            index_arrays = [self._item_id_to_idx, self._item_values,
+                            self._sess_id_to_idx, self._sess_values,
+                            self._values_buffer, self._weights_buffer]
+            total_bytes = sum([ia.nbytes for ia in index_arrays])
+            dmf = round(total_bytes / 10 ** 6, 2)
+            print(f"Device memory footprint for index objects: {dmf} Mb)")
 
     def predict(self, query_items):
         query_idx = self.name_map.name_to_idx(query_items, ITEM_ID)
@@ -97,6 +102,8 @@ class CupyVsKnnModel(VsKnnModel):
             if len(sessions) > self.top_k:
                 sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
             unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
+            if unique_items[0] == 0 and len(unique_items) > 1:
+                unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
             ret_item_names = self.name_map.idx_to_name(unique_items, ITEM_ID)
         else:
             ret_item_names, w_sum_items = [], cp.array([])
@@ -106,9 +113,12 @@ class CupyVsKnnModel(VsKnnModel):
         pass
 
     def get_session_similarities(self, query):
-        item_slice = self.item_to_sessions[query]
-        weights_slice = self.weight_function(len(query))
-        sessions, session_similarities = weighted_word_count(item_slice, weights_slice)
+        # todo: check not making deep copy here
+        weights = self.weight_function(len(query))
+        keys_array = self._item_id_to_idx[query]
+        values_array = self._item_values
+        sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,
+                                                                self.max_items_per_session)
         return sessions, session_similarities
 
     def keep_topk_sessions(self, sessions, session_similarities):
@@ -116,9 +126,38 @@ class CupyVsKnnModel(VsKnnModel):
         return sessions[selection], session_similarities[selection]
 
     def get_item_similarities(self, sessions, session_similarities):
-        session_slice = self.session_to_items[sessions]
-        unique_items, w_sum_items = weighted_word_count(session_slice, session_similarities)
+        keys_array = self._sess_id_to_idx[sessions]
+        values_array = self._sess_values
+        unique_items, w_sum_items = self._get_similarities(keys_array, values_array, session_similarities,
+                                                           self.max_items_per_session)
         return unique_items, w_sum_items
+
+    def _get_similarities(self, key_array, values_array, weights_array, n_keys):
+        self._copy_values_to_buffer(key_array, values_array, weights_array, n_keys)
+        unique_values = cp.unique(self._values_buffer)
+        similarities = self._reduce_buffer(unique_values)
+        return unique_values, similarities
+
+    def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys):
+        n_values_per_keys = self.max_sessions_per_items if n_keys == self.max_items_per_session \
+            else self.max_items_per_session
+        kernel_args = (key_array, values_array, weights_array,
+                       n_values_per_keys, n_keys, self._buffer_shape,
+                       self._values_buffer, self._weights_buffer)
+        t_per_block = 256
+        n_blocks = int(len(self._values_buffer) / t_per_block) + 1
+        copy_values_kernel((n_blocks,), (t_per_block,), kernel_args)
+
+    def _reduce_buffer(self, unique_values):
+        out_weights_groupby = cp.zeros_like(unique_values, dtype=cp.float32)
+        n_items = self._buffer_shape * len(unique_values)
+        kernel_args = (self._values_buffer, self._weights_buffer, unique_values,
+                       len(unique_values), n_items,
+                       out_weights_groupby)
+        t_per_block = 256
+        n_blocks = int(n_items / t_per_block) + 1
+        groubpy_kernel((n_blocks,), (t_per_block,), kernel_args)
+        return out_weights_groupby
 
     def _step3_keep_topk_sessions(self, session_items):
         raise NotImplementedError
@@ -135,70 +174,3 @@ class CupyVsKnnModel(VsKnnModel):
         df['value_n'] = df.groupby(sort_key).cumcount()
         df = df[df['value_n'] <= n_keep]
         return df.drop(['index', 'value_n'], axis=1)
-
-
-class DataframeVsKnnModel(VsKnnModel):
-    def __init__(self, project_config, no_cudf=False, top_k=100):
-
-        super().__init__(top_k)
-        self.confid = project_config
-        self.index_builder = IndexBuilder(project_config, no_cudf=no_cudf)
-
-        self.cudf = cudf
-        if no_cudf:
-            self.cudf = pd
-
-    def train(self):
-        self.index_builder.create_indices()
-
-    def load(self):
-        self.index_builder.load_indices()
-
-    def predict(self, query_items):
-        query_df = self._step1_ingest_query(query_items)
-        items_sessions_pi = self.get_session_similarities(query_df)
-        top_k_sessions = self._step3_keep_topk_sessions(items_sessions_pi)
-        item_scores = self._step4_get_item_similarities_df(top_k_sessions)
-        return item_scores
-
-    def get_test_dict(self):
-        test_series = pd.read_csv(
-            self.config['data_sources']['test_data'],
-            names=['sess', 'tms', 'item', 'cat'])
-        processed_series = test_series.sort_values(by=['sess', 'tms'], ascending=[True, False]).drop(
-            columns=['tms', 'cat'])
-        session_to_item = processed_series.groupby('sess')['item'].apply(list)
-        test_examples = pd.DataFrame(session_to_item).to_dict(orient='index')
-
-        test_examples = {k: v['item'][0:self.config['items_per_session']] for k, v in test_examples.items()}
-        return test_examples
-
-    def _step1_ingest_query(self, session_items):
-        """Convert session data to"""
-        n_items = len(session_items)
-        pi_i = [e / n_items for e in range(n_items, 0, -1)]
-        session_df = self.cudf.DataFrame({'pi_i': pi_i},
-                                         index=session_items)
-        return session_df
-
-    def get_session_similarities(self, query_df):
-        """For each item in query get past sessions containing the item.
-        Returns dataframe with item_id (index) corresponding session_id and pi_i value"""
-        past_sessions = self.index_builder.item_index.loc[query_df.index]
-        items_sessions_pi = past_sessions.join(query_df)
-        return items_sessions_pi
-
-    def _step3_keep_topk_sessions(self, df):
-        df = df.groupby(SESSION_ID).agg({PI_I: 'sum'})
-        return df.sort_values(by=[PI_I], ascending=False)[0:self.top_k]
-
-    def _step4_get_item_similarities_df(self, top_k_sessions):
-        """for the top k sessions with similarity scores, get the items in the sessions.
-        Then get total similarity per item"""
-        top_k_items = self.index_builder.session_index.loc[top_k_sessions.index]
-        sessions_with_items = top_k_sessions.join(top_k_items)
-        item_scores = sessions_with_items.groupby(ITEM_ID).agg({PI_I: 'sum'})
-        return item_scores
-
-    def get_item_similarities(self, sessions, session_similarities):
-        raise NotImplementedError
