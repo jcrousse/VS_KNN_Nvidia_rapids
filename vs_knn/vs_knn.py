@@ -5,7 +5,7 @@ import cupy as cp
 from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
 from vs_knn.vsknn_index import OneDimVsknnIndex
 from vs_knn.name_mapper import NameIdxMap
-from vs_knn.custom_kernels import copy_values_kernel, groubpy_kernel, copy_weights_kernel
+from vs_knn.custom_kernels import copy_values_kernel, groubpy_kernel
 
 int_type = cp.intc
 
@@ -143,21 +143,15 @@ class CupyVsKnnModel(VsKnnModel):
         return unique_values, similarities
 
     def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys):
-        self._weights_buffer = cp.zeros(self._buffer_shape, dtype=cp.float32)
         n_values_per_keys = self.max_sessions_per_items if n_keys == self.max_items_per_session \
             else self.max_items_per_session
-        kernel_args_v = (key_array, values_array,
-                       len(key_array), n_values_per_keys, n_keys, self._buffer_shape,
-                       self._values_buffer)
-        kernel_args_w = (key_array, weights_array,
-                       len(key_array), n_values_per_keys, n_keys, self._buffer_shape,
-                       self._weights_buffer)
+        kernel_args = (key_array, values_array, weights_array,
+                         len(key_array), n_values_per_keys, n_keys, self._buffer_shape,
+                         self._values_buffer,  self._weights_buffer)
         t_per_block = 256
         target_threads = len(key_array) * n_values_per_keys
         n_blocks = int(target_threads / t_per_block) + 1
-        copy_values_kernel((n_blocks,), (t_per_block,), kernel_args_v)
-        # print("_______________new weights_____________")
-        copy_weights_kernel((n_blocks,), (t_per_block,), kernel_args_w)
+        copy_values_kernel((n_blocks,), (t_per_block,), kernel_args)
 
     def _reduce_buffer(self, unique_values):
         out_weights_groupby = cp.zeros_like(unique_values, dtype=cp.float32)

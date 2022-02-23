@@ -32,17 +32,13 @@ def test_copy_kernel():
 
 
 def run_copy_kernel():
-    kernel_args_val = (idx_array, values_array,
-                       sessions_per_item, items_per_session, buffer_shape,
-                       out_values)
-    kernel_args_wei = (idx_array, weight_array,
-                       len(idx_array), sessions_per_item, items_per_session, buffer_shape,
-                       out_weights)
+    kernel_args = (idx_array, values_array, weight_array,
+                   len(idx_array), sessions_per_item, items_per_session, buffer_shape,
+                   out_values, out_weights)
     t_per_block = 256
     target_threads = len(idx_array) * sessions_per_item
     n_blocks = int(target_threads / t_per_block) + 1
-    kernels.copy_values_kernel((n_blocks, ), (t_per_block,), kernel_args_val)
-    kernels.copy_weights_kernel((n_blocks,), (t_per_block,), kernel_args_wei)
+    kernels.copy_values_kernel((n_blocks, ), (t_per_block,), kernel_args)
 
 
 def value_array_check(out_idx):
