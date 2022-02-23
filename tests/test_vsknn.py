@@ -8,7 +8,7 @@ def shuffle_df(df: cudf.DataFrame):
 
 
 def test_cupymodel(tiny_vsknn_df, tiny_session):
-    model = CupyVsKnnModel(top_k=2, max_sessions_per_items=10)
+    model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20)
     model.train(tiny_vsknn_df)
 
     predicted_items, predicted_score = model.predict(tiny_session)
