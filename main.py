@@ -82,7 +82,6 @@ def test_a_model(model, test_data):
     for n_treated, test_session in enumerate(pbar):
             x, y = session_to_xy(test_session)
             if x is not None:
-                x = np.unique(x)  # todo: this should fuck everything up on HR@20
                 items_pred, item_scores = model.predict(x)
                 selection = cp.flip(cp.argsort(item_scores)[-20:])
                 items_rec = items_pred[selection]
@@ -128,25 +127,7 @@ if __name__ == '__main__':
             items, scores = cp_model.predict(session_clean)
             return items, scores
 
-        # from vs_knn.custom_kernels import copy_values_kernel
-        # for i in range(100):
-        #     print(i)
-        #     # idx_array = cp.array([[9317586, 9317686], [9317586, 9317686]], dtype=cp.intc)
-        #     idx_array = cp.array([[4666634, 4667623]], dtype=cp.intc)
-        #     values_array = cp.zeros(17646935, dtype=cp.intc)
-        #     weight_array = cp.arange(10, dtype=cp.float32)
-        #
-        #     out_values = cp.zeros(50000, dtype=cp.intc)
-        #     out_weights = cp.zeros(50000, dtype=cp.float32)
-        #     t_per_block = 256
-        #     n_blocks = int(len(values_array) / t_per_block) + 1
-        #     kernel_args = (idx_array, values_array, weight_array,
-        #                    5000, 10, 50000,
-        #                    out_values, out_weights)
-        #
-        #     copy_values_kernel((n_blocks,), (t_per_block,), kernel_args)
-
-        # print(repeat(run_random_test, n_repeat=100))
+        print(repeat(run_random_test, n_repeat=100))
 
         session_to_items_test = test_set.set_index(SESSION_ID)
 
