@@ -122,7 +122,7 @@ class CupyVsKnnModel(VsKnnModel):
         keys_array = self._item_id_to_idx[query]
         values_array = self._item_values
         sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,
-                                                                self.max_items_per_session)
+                                                                self.max_sessions_per_items)
         return sessions, session_similarities
 
     def keep_topk_sessions(self, sessions, session_similarities):
