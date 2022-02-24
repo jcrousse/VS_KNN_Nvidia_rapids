@@ -1,4 +1,3 @@
-import pytest
 from vs_knn.vs_knn import CupyVsKnnModel
 import cudf
 
@@ -9,7 +8,7 @@ def shuffle_df(df: cudf.DataFrame):
 
 
 def test_cupymodel(tiny_vsknn_df, tiny_session):
-    model = CupyVsKnnModel(top_k=2)
+    model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20)
     model.train(tiny_vsknn_df)
 
     predicted_items, predicted_score = model.predict(tiny_session)
@@ -24,8 +23,3 @@ def test_cupymodel(tiny_vsknn_df, tiny_session):
 
 def test_cupymodel_str():
     pass
-
-
-def test_cupymodel_cudfmodel():
-    pass
-
