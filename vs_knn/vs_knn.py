@@ -1,7 +1,9 @@
 import gc
+import os
 
 import cudf
 import cupy as cp
+import numpy as np
 from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
 from vs_knn.vsknn_index import OneDimVsknnIndex
 from vs_knn.name_mapper import NameIdxMap
@@ -20,13 +22,7 @@ class VsKnnModel:
     def predict(self, query_items):
         raise NotImplementedError
 
-    def _step1_ingest_query(self, session_items):
-        raise NotImplementedError
-
     def get_session_similarities(self, query):
-        raise NotImplementedError
-
-    def _step3_keep_topk_sessions(self, session_items):
         raise NotImplementedError
 
     def get_item_similarities(self, sessions, session_similarities):
@@ -113,9 +109,6 @@ class CupyVsKnnModel(VsKnnModel):
             ret_item_names, w_sum_items = [], cp.array([])
         return ret_item_names, w_sum_items
 
-    def _step1_ingest_query(self, query_items):
-        pass
-
     def get_session_similarities(self, query):
         # todo: check not making deep copy here
         weights = self.weight_function(len(query))
@@ -179,3 +172,14 @@ class CupyVsKnnModel(VsKnnModel):
         df['value_n'] = df.groupby(sort_key).cumcount()
         df = df[df['value_n'] <= n_keep]
         return df.drop(['index', 'value_n'], axis=1)
+
+    def save(self, dirname):
+        if not os.path.isdir(dirname):
+            os.mkdir(dirname)
+
+        cupy_store = os.path.join(dirname, '_cupy.npz')
+        with open(cupy_store, 'w') as f:
+            cp.savez(f, self._item_id_to_idx, self._item_values, self._sess_id_to_idx, self._sess_values)
+
+        self.name_map.save(dirname)
+

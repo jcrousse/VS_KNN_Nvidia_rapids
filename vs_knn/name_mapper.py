@@ -4,9 +4,12 @@ this tool transforms the input data item_id and session_id into contiguous int32
 Then it provides dictionaries and arrays to convert the names to ids and vice versa.
 """
 import gc
+import os
+import pickle
 
 import cudf
 import cupy as cp
+import numpy as np
 import pandas as pd
 
 from vs_knn.col_names import SESSION_ID, ITEM_ID
@@ -18,8 +21,6 @@ class NameIdxMap:
         :param columns_to_convert: Columns names in input df for which an index must be created
         :param skips_missings: if True, a key is not found in name_to_idx function will be skipped instead of
         causing a KeyError.
-        # todo: option to delete some of the column mappings. Since session mappings won't be used since model gets
-            items in and out
         """
         self.skip_missings = skips_missings
 
@@ -29,6 +30,13 @@ class NameIdxMap:
 
         self._transformed_df = cudf.DataFrame()
         self._fit = False
+
+        self._save_load_details = [
+            {'file_suffix':  '_nm_names.npz', 'data': self._idx_to_name_map,
+             'load_fn': self._load_cupy, 'save_fn': self._save_cupy},
+            {'file_suffix':  '_nm_idx.npy', 'data': self._name_to_idx_map,
+             'load_fn': self._load_dict, 'save_fn': self._save_dict}
+        ]
 
     def build(self, df: cudf.DataFrame):
 
@@ -97,3 +105,40 @@ class NameIdxMap:
         del self._idx_to_name_map[column_name]
         gc.collect()
 
+    def save(self, dirname):
+        if not os.path.isdir(dirname):
+            raise FileNotFoundError(f"Directory {dirname} not found.")
+
+        for save_details in self._save_load_details:
+            save_details['save_fn'](dirname, save_details['file_suffix'], save_details['data'])
+
+    def _save_cupy(self, dirname, file_suffix, data):
+        filename = os.path.join(dirname, file_suffix)
+        cp.savez(filename, **data)
+
+    def _save_dict(self,  dirname, file_suffix, data):
+        filepath = os.path.join(dirname, file_suffix)
+        with open(filepath, 'wb') as f:
+            pickle.dump(data, f)
+
+    def _load_cupy(self, dirname, filename, data_ob):
+        data = cp.load(os.path.join(dirname, filename))
+        for col in data.npz_file.files:
+            data_ob[col] = data[col]
+
+    def _load_dict(self, dirname, filename, data_ob):
+        filepath = os.path.join(dirname, filename)
+        with open(filepath, 'rb') as f:
+            tmp_d = pickle.load(f)
+        for col in tmp_d:
+            data_ob[col] = tmp_d[col]
+        # del tmp_d
+
+    # def _load_numpy(self, filename, data_ob):
+    #     data = np.load(filename)
+    #     for col in data.files:
+    #         data_ob[col] = data[col]
+
+    def load(self, dirname):
+        for save_details in self._save_load_details:
+            save_details['load_fn'](dirname, save_details['file_suffix'], save_details['data'])

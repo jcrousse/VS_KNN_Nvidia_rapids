@@ -1,30 +1,15 @@
 import random
-import cudf
 import cupy as cp
-from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP, CATEGORY, YOUCHOOSE_COLUMNS
 from vs_knn.name_mapper import NameIdxMap
+from vs_knn.col_names import SESSION_ID, ITEM_ID
 
 
 def test_name_mapper_int(youchoose_raw_int):
-    data_types = {SESSION_ID: cp.dtype('int32'), TIMESTAMP: cp.dtype('O'), ITEM_ID: cp.dtype('int32'),
-                  CATEGORY: cp.dtype('int32')}
-
-    df = cudf.read_csv(youchoose_raw_int,
-                       names=YOUCHOOSE_COLUMNS,
-                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)[[SESSION_ID, ITEM_ID]]
-
-    convert_then_retrieve(df)
+    convert_then_retrieve(youchoose_raw_int)
 
 
 def test_name_mapper_str(youchoose_raw_str):
-    data_types = {SESSION_ID: cp.dtype('str'), TIMESTAMP: cp.dtype('O'), ITEM_ID: cp.dtype('str'),
-                  CATEGORY: cp.dtype('str')}
-
-    df = cudf.read_csv(youchoose_raw_str,
-                       names=YOUCHOOSE_COLUMNS,
-                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)[[SESSION_ID, ITEM_ID]]
-
-    convert_then_retrieve(df)
+    convert_then_retrieve(youchoose_raw_str)
 
 
 def convert_then_retrieve(df):
@@ -49,4 +34,18 @@ def convert_then_retrieve(df):
     original_session_names_set = set(cp.asnumpy(original_session_names))
 
     assert session_names_set == original_session_names_set
+
+
+def test_save_name_mapper(tmpdir, youchoose_raw_int):
+    nip = NameIdxMap().build(youchoose_raw_int)
+
+    nip.save(tmpdir)
+
+    nip2 = NameIdxMap()
+    nip2.load(tmpdir)
+
+    assert all(a == b for a, b in
+               zip(nip.name_to_idx([1, 2, 2465], SESSION_ID), nip2.name_to_idx([1, 2, 2465], SESSION_ID)))
+    assert all(a == b for a, b in
+               zip(nip.idx_to_name([1, 2, 2465], SESSION_ID), nip2.idx_to_name([1, 2, 2465], SESSION_ID)))
 
