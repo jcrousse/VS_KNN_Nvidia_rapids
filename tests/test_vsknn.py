@@ -37,10 +37,10 @@ def test_save_load(tiny_vsknn_df, tiny_session, tmpdir):
 
 
 def test_cupymodel_str(tiny_vsknn_df, tiny_session, tmpdir):
-    tiny_vsknn_df[SESSION_ID] = 'sess_' + tiny_vsknn_df[SESSION_ID].astype(str)
-    tiny_vsknn_df[ITEM_ID] = 'item_' + tiny_vsknn_df[ITEM_ID].astype(str)
+    tiny_vsknn_df["session_col"] = 'sess_' + tiny_vsknn_df[SESSION_ID].astype(str)
+    tiny_vsknn_df["item_col"] = 'item_' + tiny_vsknn_df[ITEM_ID].astype(str)
 
-    model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20)
+    model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20, item_col="item_col", session_col="session_col")
     model.train(tiny_vsknn_df)
 
     model.save(tmpdir)
