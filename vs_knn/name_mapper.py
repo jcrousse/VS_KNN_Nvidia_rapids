@@ -81,10 +81,12 @@ class NameIdxMap:
             idx_to_name
         ])
 
-        if df[col].dtype == np.int:
+        if df[col].dtype in (np.int, np.intc):
             self._idx_to_name_map[col] = cp.array(idx_to_name_pad.values)
-        if df[col].dtype == np.object:
+        elif df[col].dtype == np.object:
             self._idx_to_name_map[col] = np.array(idx_to_name_pad.values)
+        else:
+            raise TypeError(f"Un-supported data type: {df[col].dtype} for column {col}")
 
         self._transformed_df = self._transformed_df.set_index(col)\
             .join(name_to_idx_series)\
