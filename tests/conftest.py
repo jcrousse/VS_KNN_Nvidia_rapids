@@ -2,7 +2,7 @@ import pytest
 import os
 import cupy as cp
 import cudf
-from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
+from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP, CATEGORY, YOUCHOOSE_COLUMNS
 
 @pytest.fixture
 def single_row() -> cp.array:
@@ -27,13 +27,27 @@ def weight_array_ones():
 
 
 @pytest.fixture
-def youchoose_raw_int() -> str:
-    return os.path.join(os.path.dirname(__file__), 'data', 'youchoose_raw_int.csv')
+def youchoose_raw_int() -> cudf.DataFrame:
+    filepath = os.path.join(os.path.dirname(__file__), 'data', 'youchoose_raw_int.csv')
+    data_types = {SESSION_ID: cp.dtype('int32'), TIMESTAMP: cp.dtype('O'), ITEM_ID: cp.dtype('int32'),
+                  CATEGORY: cp.dtype('int32')}
+
+    df = cudf.read_csv(filepath,
+                       names=YOUCHOOSE_COLUMNS,
+                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)[[SESSION_ID, ITEM_ID]]
+    return df
 
 
 @pytest.fixture
-def youchoose_raw_str() -> str:
-    return os.path.join(os.path.dirname(__file__), 'data', 'youchoose_raw_str.csv')
+def youchoose_raw_str() -> cudf.DataFrame:
+    filepath = os.path.join(os.path.dirname(__file__), 'data', 'youchoose_raw_int.csv')
+    data_types = {SESSION_ID: cp.dtype('str'), TIMESTAMP: cp.dtype('O'), ITEM_ID: cp.dtype('str'),
+                  CATEGORY: cp.dtype('str')}
+
+    df = cudf.read_csv(filepath,
+                       names=YOUCHOOSE_COLUMNS,
+                       dtype=data_types).sort_values(by=TIMESTAMP, ascending=False)[[SESSION_ID, ITEM_ID]]
+    return df
 
 
 @pytest.fixture

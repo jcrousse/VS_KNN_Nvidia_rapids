@@ -4,6 +4,9 @@ this tool transforms the input data item_id and session_id into contiguous int32
 Then it provides dictionaries and arrays to convert the names to ids and vice versa.
 """
 import gc
+import os
+import pickle
+import numpy as np
 
 import cudf
 import cupy as cp
@@ -18,8 +21,6 @@ class NameIdxMap:
         :param columns_to_convert: Columns names in input df for which an index must be created
         :param skips_missings: if True, a key is not found in name_to_idx function will be skipped instead of
         causing a KeyError.
-        # todo: option to delete some of the column mappings. Since session mappings won't be used since model gets
-            items in and out
         """
         self.skip_missings = skips_missings
 
@@ -80,8 +81,12 @@ class NameIdxMap:
             idx_to_name
         ])
 
-        # todo: optional numpy str array + flag for numpy conversion if needed?
-        self._idx_to_name_map[col] = cp.array(idx_to_name_pad.values)
+        if df[col].dtype in (np.int, np.intc):
+            self._idx_to_name_map[col] = cp.array(idx_to_name_pad.values)
+        elif df[col].dtype == np.object:
+            self._idx_to_name_map[col] = np.array(idx_to_name_pad.values)
+        else:
+            raise TypeError(f"Un-supported data type: {df[col].dtype} for column {col}")
 
         self._transformed_df = self._transformed_df.set_index(col)\
             .join(name_to_idx_series)\
@@ -96,4 +101,3 @@ class NameIdxMap:
         del self._name_to_idx_map[column_name]
         del self._idx_to_name_map[column_name]
         gc.collect()
-

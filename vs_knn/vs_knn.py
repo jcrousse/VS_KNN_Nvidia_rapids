@@ -1,4 +1,6 @@
 import gc
+import os
+import pickle
 
 import cudf
 import cupy as cp
@@ -20,13 +22,7 @@ class VsKnnModel:
     def predict(self, query_items):
         raise NotImplementedError
 
-    def _step1_ingest_query(self, session_items):
-        raise NotImplementedError
-
     def get_session_similarities(self, query):
-        raise NotImplementedError
-
-    def _step3_keep_topk_sessions(self, session_items):
         raise NotImplementedError
 
     def get_item_similarities(self, sessions, session_similarities):
@@ -42,7 +38,8 @@ def no_decay(n):
 
 
 class CupyVsKnnModel(VsKnnModel):
-    def __init__(self,  decay='linear', top_k=100, max_sessions_per_items=5000, max_item_per_session=10):
+    def __init__(self,  decay='linear', top_k=100, max_sessions_per_items=5000, max_item_per_session=10,
+                 item_col=ITEM_ID, time_col=TIMESTAMP, session_col=SESSION_ID):
         super().__init__(top_k)
 
         self.max_sessions_per_items = max_sessions_per_items
@@ -55,6 +52,8 @@ class CupyVsKnnModel(VsKnnModel):
         self._values_buffer = cp.zeros(self._buffer_shape, dtype=int_type)
         self._weights_buffer = cp.zeros(self._buffer_shape, dtype=cp.float32)
 
+        self.item_col, self.time_col, self.session_col = item_col, time_col, session_col
+
         self.name_map = NameIdxMap(skips_missings=True)
 
         if decay == 'linear':
@@ -63,6 +62,9 @@ class CupyVsKnnModel(VsKnnModel):
             self.weight_function = no_decay
 
     def train(self, train_df: cudf.DataFrame, verbose=True):
+
+        train_df = train_df.rename(columns={self.item_col: ITEM_ID,
+                                            self.time_col: TIMESTAMP, self.session_col:SESSION_ID})
 
         train_df = train_df.drop_duplicates(subset=[SESSION_ID, ITEM_ID], keep='first')
 
@@ -112,9 +114,6 @@ class CupyVsKnnModel(VsKnnModel):
         else:
             ret_item_names, w_sum_items = [], cp.array([])
         return ret_item_names, w_sum_items
-
-    def _step1_ingest_query(self, query_items):
-        pass
 
     def get_session_similarities(self, query):
         # todo: check not making deep copy here
@@ -179,3 +178,41 @@ class CupyVsKnnModel(VsKnnModel):
         df['value_n'] = df.groupby(sort_key).cumcount()
         df = df[df['value_n'] <= n_keep]
         return df.drop(['index', 'value_n'], axis=1)
+
+    def save(self, dirname):
+        if not os.path.isdir(dirname):
+            os.mkdir(dirname)
+
+        cupy_store = os.path.join(dirname, '_cupy.npz')
+        param_store = os.path.join(dirname, '_model_params.pkl')
+
+        cp.savez(cupy_store, iid=self._item_id_to_idx, iv=self._item_values, sid=self._sess_id_to_idx,
+                 sv=self._sess_values)
+
+        with open(param_store, 'wb') as f:
+            pickle.dump({
+                'top_k': self.top_k,
+                'max_sessions_per_items': self.max_sessions_per_items,
+                'max_items_per_session': self.max_items_per_session,
+                'name_map': self.name_map,
+                'weight_function': self.weight_function
+            }, f)
+
+    def load(self, dirname):
+
+        cupy_store = os.path.join(dirname, '_cupy.npz')
+        param_store = os.path.join(dirname, '_model_params.pkl')
+
+        saved_data = cp.load(cupy_store)
+        self._item_id_to_idx = saved_data['iid']
+        self._item_values = saved_data['iv']
+        self._sess_id_to_idx = saved_data['sid']
+        self._sess_values = saved_data['sv']
+
+        with open(param_store, 'rb') as f:
+            stored_params = pickle.load(f)
+            self.top_k = stored_params["top_k"]
+            self.max_sessions_per_items = stored_params["max_sessions_per_items"]
+            self.max_items_per_session = stored_params["max_items_per_session"]
+            self.name_map = stored_params["name_map"]
+            self.weight_function = stored_params["weight_function"]
