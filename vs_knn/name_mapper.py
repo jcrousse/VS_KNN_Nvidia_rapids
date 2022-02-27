@@ -6,6 +6,7 @@ Then it provides dictionaries and arrays to convert the names to ids and vice ve
 import gc
 import os
 import pickle
+import numpy as np
 
 import cudf
 import cupy as cp
@@ -87,8 +88,12 @@ class NameIdxMap:
             idx_to_name
         ])
 
-        # todo: optional numpy str array + flag for numpy conversion if needed?
-        self._idx_to_name_map[col] = cp.array(idx_to_name_pad.values)
+        if df[col].dtype == np.int:
+            self._idx_to_name_map[col] = cp.array(idx_to_name_pad.values)
+        if df[col].dtype == np.object:
+            self._idx_to_name_map[col] = np.array(idx_to_name_pad.values)
+            self._save_load_details[0]['save_fn'] = self._save_numpy
+            self._save_load_details[0]['load_fn'] = self._load_numpy
 
         self._transformed_df = self._transformed_df.set_index(col)\
             .join(name_to_idx_series)\
@@ -115,6 +120,10 @@ class NameIdxMap:
         filename = os.path.join(dirname, file_suffix)
         cp.savez(filename, **data)
 
+    def _save_numpy(self, dirname, file_suffix, data):
+        filename = os.path.join(dirname, file_suffix)
+        np.savez(filename, **data)
+
     def _save_dict(self,  dirname, file_suffix, data):
         filepath = os.path.join(dirname, file_suffix)
         with open(filepath, 'wb') as f:
@@ -123,6 +132,11 @@ class NameIdxMap:
     def _load_cupy(self, dirname, filename, data_ob):
         data = cp.load(os.path.join(dirname, filename))
         for col in data.npz_file.files:
+            data_ob[col] = data[col]
+
+    def _load_numpy(self, dirname, filename, data_ob):
+        data = np.load(os.path.join(dirname, filename))
+        for col in data.files:
             data_ob[col] = data[col]
 
     def _load_dict(self, dirname, filename, data_ob):
