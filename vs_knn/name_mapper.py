@@ -31,13 +31,6 @@ class NameIdxMap:
         self._transformed_df = cudf.DataFrame()
         self._fit = False
 
-        self._save_load_details = [
-            {'file_suffix':  '_nm_names.npz', 'data': self._idx_to_name_map,
-             'load_fn': self._load_cupy, 'save_fn': self._save_cupy},
-            {'file_suffix':  '_nm_idx.npy', 'data': self._name_to_idx_map,
-             'load_fn': self._load_dict, 'save_fn': self._save_dict}
-        ]
-
     def build(self, df: cudf.DataFrame):
 
         self._validate_df(df)
@@ -92,8 +85,6 @@ class NameIdxMap:
             self._idx_to_name_map[col] = cp.array(idx_to_name_pad.values)
         if df[col].dtype == np.object:
             self._idx_to_name_map[col] = np.array(idx_to_name_pad.values)
-            self._save_load_details[0]['save_fn'] = self._save_numpy
-            self._save_load_details[0]['load_fn'] = self._load_numpy
 
         self._transformed_df = self._transformed_df.set_index(col)\
             .join(name_to_idx_series)\
@@ -108,45 +99,3 @@ class NameIdxMap:
         del self._name_to_idx_map[column_name]
         del self._idx_to_name_map[column_name]
         gc.collect()
-
-    def save(self, dirname):
-        if not os.path.isdir(dirname):
-            raise FileNotFoundError(f"Directory {dirname} not found.")
-
-        for save_details in self._save_load_details:
-            save_details['save_fn'](dirname, save_details['file_suffix'], save_details['data'])
-
-    def _save_cupy(self, dirname, file_suffix, data):
-        filename = os.path.join(dirname, file_suffix)
-        cp.savez(filename, **data)
-
-    def _save_numpy(self, dirname, file_suffix, data):
-        filename = os.path.join(dirname, file_suffix)
-        np.savez(filename, **data)
-
-    def _save_dict(self,  dirname, file_suffix, data):
-        filepath = os.path.join(dirname, file_suffix)
-        with open(filepath, 'wb') as f:
-            pickle.dump(data, f)
-
-    def _load_cupy(self, dirname, filename, data_ob):
-        data = cp.load(os.path.join(dirname, filename))
-        for col in data.npz_file.files:
-            data_ob[col] = data[col]
-
-    def _load_numpy(self, dirname, filename, data_ob):
-        data = np.load(os.path.join(dirname, filename))
-        for col in data.files:
-            data_ob[col] = data[col]
-
-    def _load_dict(self, dirname, filename, data_ob):
-        filepath = os.path.join(dirname, filename)
-        with open(filepath, 'rb') as f:
-            tmp_d = pickle.load(f)
-        for col in tmp_d:
-            data_ob[col] = tmp_d[col]
-        del tmp_d
-
-    def load(self, dirname):
-        for save_details in self._save_load_details:
-            save_details['load_fn'](dirname, save_details['file_suffix'], save_details['data'])

@@ -186,16 +186,14 @@ class CupyVsKnnModel(VsKnnModel):
             pickle.dump({
                 'top_k': self.top_k,
                 'max_sessions_per_items': self.max_sessions_per_items,
-                'max_items_per_session': self.max_items_per_session
+                'max_items_per_session': self.max_items_per_session,
+                'name_map': self.name_map
             }, f)
-
-        self.name_map.save(dirname)
 
     def load(self, dirname):
 
         cupy_store = os.path.join(dirname, '_cupy.npz')
         param_store = os.path.join(dirname, '_model_params.pkl')
-        self.name_map.load(dirname)
 
         saved_data = cp.load(cupy_store)
         self._item_id_to_idx = saved_data['iid']
@@ -208,6 +206,7 @@ class CupyVsKnnModel(VsKnnModel):
             self.top_k = stored_params["top_k"]
             self.max_sessions_per_items = stored_params["max_sessions_per_items"]
             self.max_items_per_session = stored_params["max_items_per_session"]
+            self.name_map = stored_params["name_map"]
 
 
 

@@ -1,5 +1,6 @@
 from vs_knn.vs_knn import CupyVsKnnModel
 import cudf
+from vs_knn.col_names import SESSION_ID, ITEM_ID
 
 
 def shuffle_df(df: cudf.DataFrame):
@@ -13,6 +14,7 @@ def test_cupymodel(tiny_vsknn_df, tiny_session):
     model_predict_test(model, tiny_session)
     # todo: also check the proper filtering of most recent items per sessions and sessions per items
     # todo: Unseen values replaced by 0s instead of skipped?
+    # todo: ensure all of this works with different names for columns (including save/load)
 
 
 def model_predict_test(model, tiny_session):
@@ -34,5 +36,15 @@ def test_save_load(tiny_vsknn_df, tiny_session, tmpdir):
     model_predict_test(model_new, tiny_session)
 
 
-def test_cupymodel_str():
-    pass
+def test_cupymodel_str(tiny_vsknn_df, tiny_session, tmpdir):
+    tiny_vsknn_df[SESSION_ID] = 'sess_' + tiny_vsknn_df[SESSION_ID].astype(str)
+    tiny_vsknn_df[ITEM_ID] = 'item_' + tiny_vsknn_df[ITEM_ID].astype(str)
+
+    model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20)
+    model.train(tiny_vsknn_df)
+
+    model.save(tmpdir)
+    model_new = CupyVsKnnModel()
+    model_new.load(tmpdir)
+
+    model_predict_test(model_new, tiny_session)
