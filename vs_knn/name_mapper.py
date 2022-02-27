@@ -9,7 +9,6 @@ import pickle
 
 import cudf
 import cupy as cp
-import numpy as np
 import pandas as pd
 
 from vs_knn.col_names import SESSION_ID, ITEM_ID
@@ -132,12 +131,7 @@ class NameIdxMap:
             tmp_d = pickle.load(f)
         for col in tmp_d:
             data_ob[col] = tmp_d[col]
-        # del tmp_d
-
-    # def _load_numpy(self, filename, data_ob):
-    #     data = np.load(filename)
-    #     for col in data.files:
-    #         data_ob[col] = data[col]
+        del tmp_d
 
     def load(self, dirname):
         for save_details in self._save_load_details:

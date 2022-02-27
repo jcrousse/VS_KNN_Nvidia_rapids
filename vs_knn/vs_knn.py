@@ -1,9 +1,9 @@
 import gc
 import os
+import pickle
 
 import cudf
 import cupy as cp
-import numpy as np
 from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
 from vs_knn.vsknn_index import OneDimVsknnIndex
 from vs_knn.name_mapper import NameIdxMap
@@ -178,8 +178,36 @@ class CupyVsKnnModel(VsKnnModel):
             os.mkdir(dirname)
 
         cupy_store = os.path.join(dirname, '_cupy.npz')
-        with open(cupy_store, 'w') as f:
-            cp.savez(f, self._item_id_to_idx, self._item_values, self._sess_id_to_idx, self._sess_values)
+        param_store = os.path.join(dirname, '_model_params.pkl')
+
+        cp.savez(cupy_store, iid=self._item_id_to_idx, iv=self._item_values, sid=self._sess_id_to_idx, sv=self._sess_values)
+
+        with open(param_store, 'wb') as f:
+            pickle.dump({
+                'top_k': self.top_k,
+                'max_sessions_per_items': self.max_sessions_per_items,
+                'max_items_per_session': self.max_items_per_session
+            }, f)
 
         self.name_map.save(dirname)
+
+    def load(self, dirname):
+
+        cupy_store = os.path.join(dirname, '_cupy.npz')
+        param_store = os.path.join(dirname, '_model_params.pkl')
+        self.name_map.load(dirname)
+
+        saved_data = cp.load(cupy_store)
+        self._item_id_to_idx = saved_data['iid']
+        self._item_values = saved_data['iv']
+        self._sess_id_to_idx = saved_data['sid']
+        self._sess_values = saved_data['sv']
+
+        with open(param_store, 'rb') as f:
+            stored_params = pickle.load(f)
+            self.top_k = stored_params["top_k"]
+            self.max_sessions_per_items = stored_params["max_sessions_per_items"]
+            self.max_items_per_session = stored_params["max_items_per_session"]
+
+
 
