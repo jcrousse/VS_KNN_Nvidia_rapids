@@ -12,9 +12,6 @@ def test_cupymodel(tiny_vsknn_df, tiny_session):
     model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20)
     model.train(tiny_vsknn_df)
     model_predict_test(model, tiny_session)
-    # todo: also check the proper filtering of most recent items per sessions and sessions per items
-    # todo: Unseen values replaced by 0s instead of skipped?
-    # todo: ensure all of this works with different names for columns (including save/load)
 
 
 def model_predict_test(model, tiny_session):
