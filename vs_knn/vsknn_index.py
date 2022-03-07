@@ -1,4 +1,3 @@
-import cudf
 import cupy as cp
 
 from vs_knn.col_names import SESSION_ID, ITEM_ID
@@ -21,7 +20,7 @@ class OneDimVsknnIndex:
         self.value_array: cp.array = None
         self.id_to_idx: cp.array = None
 
-    def build_index(self, train_data: cudf.DataFrame, index_key=ITEM_ID, index_value=SESSION_ID):
+    def build_index(self, train_data, index_key=ITEM_ID, index_value=SESSION_ID):
         self.id_to_idx, self.value_array = self.build_idx_arrays(train_data, index_key, index_value)
 
         dmf = round((self.value_array.nbytes + self.id_to_idx.nbytes) / 10 ** 6, 2)
@@ -29,7 +28,7 @@ class OneDimVsknnIndex:
         return self
 
     @staticmethod
-    def build_idx_arrays(train_data: cudf.DataFrame, index_key=ITEM_ID, index_value=SESSION_ID, int_type=cp.intc):
+    def build_idx_arrays(train_data, index_key=ITEM_ID, index_value=SESSION_ID, int_type=cp.intc):
         start_end_idx_df = train_data \
             .sort_values(by=index_key) \
             .reset_index().drop(columns="index") \
@@ -73,7 +72,7 @@ class TwoDimVsknnIndex:
         self.value_array: cp.array = None
 
     # todo: reshape in batches ?
-    def build_index(self, train_data: cudf.DataFrame, index_key=SESSION_ID, index_value=ITEM_ID):
+    def build_index(self, train_data, index_key=SESSION_ID, index_value=ITEM_ID):
         train_data = train_data.sort_values(by=[index_key, index_value], ascending=[True, True])
         train_data = train_data.reset_index().drop('index', axis=1)
         train_data[ITEM_ID] = train_data[ITEM_ID].astype(cp.uintc)

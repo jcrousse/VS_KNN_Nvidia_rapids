@@ -4,11 +4,8 @@ this tool transforms the input data item_id and session_id into contiguous int32
 Then it provides dictionaries and arrays to convert the names to ids and vice versa.
 """
 import gc
-import os
-import pickle
 import numpy as np
 
-import cudf
 import cupy as cp
 import pandas as pd
 
@@ -22,6 +19,8 @@ class NameIdxMap:
         :param skips_missings: if True, a key is not found in name_to_idx function will be skipped instead of
         causing a KeyError.
         """
+        import cudf
+        self.cudf = cudf
         self.skip_missings = skips_missings
 
         self.columns_to_convert = columns_to_convert if columns_to_convert else [SESSION_ID, ITEM_ID]
@@ -31,7 +30,7 @@ class NameIdxMap:
         self._transformed_df = cudf.DataFrame()
         self._fit = False
 
-    def build(self, df: cudf.DataFrame):
+    def build(self, df):
 
         self._validate_df(df)
 
@@ -40,12 +39,12 @@ class NameIdxMap:
         for col in self.columns_to_convert:
             self._create_col_mappings(df, col)
 
-        _padding = cudf.DataFrame(
+        _padding = self.cudf.DataFrame(
             columns=self._transformed_df.columns,
             data={ITEM_ID: [0], SESSION_ID: [0]},
             dtype=self._transformed_df.dtypes.to_dict())
 
-        self._transformed_df = cudf.concat([_padding, self._transformed_df])
+        self._transformed_df = self.cudf.concat([_padding, self._transformed_df])
 
         return self
 

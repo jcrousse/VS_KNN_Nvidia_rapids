@@ -3,6 +3,7 @@ import cupy as cp
 # from concurrent.futures.thread import ThreadPoolExecutor
 # from concurrent.futures import as_completed
 import time
+# import cudf
 from vs_knn.vs_knn import CupyVsKnnModel
 # import pickle
 # import asyncio
