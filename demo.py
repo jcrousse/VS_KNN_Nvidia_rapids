@@ -18,17 +18,23 @@ def get_arguments():
     return args.train
 
 
+def read_dataset(filepath, columns=None, delimiter=','):
+    columns = ['session_id', 'timestamp', 'item_id'] if columns is None else columns
+    return cudf.read_csv(filepath,
+                         usecols=[0, 1, 2],
+                         dtype={
+                             'session_id': cp.dtype('int32'),
+                             'item_id': cp.dtype('int32'),
+                             'timestamp': cp.dtype('O')
+                         },
+                         delimiter=delimiter,
+                         names=columns)
+
+
 def train():
     dataset_filepath = 'archive/yoochoose-clicks.dat'
 
-    yoochoose_data = cudf.read_csv(dataset_filepath,
-                                   usecols=[0, 1, 2],
-                                   dtype={
-                                     'session_id': cp.dtype('int32'),
-                                     'item_id': cp.dtype('int32'),
-                                     'timestamp': cp.dtype('O')
-                                     },
-                                   names=['session_id', 'timestamp', 'item_id'])
+    yoochoose_data = read_dataset(dataset_filepath)
 
     n_rows = yoochoose_data.shape[0]
     n_sessions = len(yoochoose_data['session_id'].unique())
@@ -58,6 +64,22 @@ def train():
     trained_model.train(train_df)
     end = time.time()
     print(f"trained the model in {end - start} seconds")
+
+    test_sessions_array = get_test_examples(test_df)
+
+    return trained_model, test_sessions_array
+
+
+def train_session_rec_repo():
+    train_filepath = "data/yoochoose-clicks-100k_train_full.txt"
+    test_filepath = "data/yoochoose-clicks-100k_test.txt"
+    delimiter = '\t'
+    columns = ['session_id', 'item_id', 'timestamp']
+    train_df = read_dataset(train_filepath, columns, delimiter)
+    test_df = read_dataset(test_filepath, columns, delimiter)
+
+    trained_model = CupyVsKnnModel(top_k=100, max_sessions_per_items=1000, max_item_per_session=10, decay='quadratic')
+    trained_model.train(train_df)
 
     test_sessions_array = get_test_examples(test_df)
 
@@ -120,3 +142,8 @@ if __name__ == '__main__':
             test_array = pickle.load(f)
 
     itertime_rd, hr_rd = test_a_model(model, test_array)
+    print(f"Ran predictions on {len(test_array)} test examples in {itertime_rd} seconds. HR@20: {hr_rd}")
+
+    model2, test_array2 = train_session_rec_repo()
+    itertime_rd, hr_rd = test_a_model(model2, test_array2)
+    print(f"Ran predictions on {len(test_array)} test examples in {itertime_rd} seconds. HR@20: {hr_rd}")
