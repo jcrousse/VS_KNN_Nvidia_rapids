@@ -1,8 +1,8 @@
 import gc
 import os
 import pickle
+import time
 
-import cudf
 import cupy as cp
 from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
 from vs_knn.vsknn_index import OneDimVsknnIndex
@@ -12,35 +12,24 @@ from vs_knn.custom_kernels import copy_values_kernel, groubpy_kernel
 int_type = cp.intc
 
 
-class VsKnnModel:
-    def __init__(self, top_k=100):
-        self.top_k = top_k
-
-    def train(self, train_df: cudf.DataFrame):
-        raise NotImplementedError
-
-    def predict(self, query_items):
-        raise NotImplementedError
-
-    def get_session_similarities(self, query):
-        raise NotImplementedError
-
-    def get_item_similarities(self, sessions, session_similarities):
-        raise NotImplementedError
-
-
 def linear_decay(n):
     return (cp.arange(0, n, dtype=cp.float32) + 1) / n
+
+
+def quadratic_decay(n):
+    num = cp.arange(1, n + 1, dtype=cp.float32)
+    denom = num * num
+    return cp.flip(num / denom)
 
 
 def no_decay(n):
     return cp.ones(n, dtype=cp.float32)
 
 
-class CupyVsKnnModel(VsKnnModel):
+class CupyVsKnnModel:
     def __init__(self,  decay='linear', top_k=100, max_sessions_per_items=5000, max_item_per_session=10,
                  item_col=ITEM_ID, time_col=TIMESTAMP, session_col=SESSION_ID):
-        super().__init__(top_k)
+        self.top_k = top_k
 
         self.max_sessions_per_items = max_sessions_per_items
         self.max_items_per_session = max_item_per_session
@@ -49,8 +38,8 @@ class CupyVsKnnModel(VsKnnModel):
         self._sess_id_to_idx, self._sess_values = cp.empty(1), cp.empty(1)
 
         self._buffer_shape = max_sessions_per_items * max_item_per_session
-        self._values_buffer = cp.zeros(self._buffer_shape, dtype=int_type)
-        self._weights_buffer = cp.zeros(self._buffer_shape, dtype=cp.float32)
+        # self._values_buffer = cp.zeros(self._buffer_shape, dtype=int_type)
+        # self._weights_buffer = cp.zeros(self._buffer_shape, dtype=cp.float32)
 
         self.item_col, self.time_col, self.session_col = item_col, time_col, session_col
 
@@ -58,13 +47,15 @@ class CupyVsKnnModel(VsKnnModel):
 
         if decay == 'linear':
             self.weight_function = linear_decay
+        elif decay == 'quadratic':
+            self.weight_function = quadratic_decay
         else:
             self.weight_function = no_decay
 
-    def train(self, train_df: cudf.DataFrame, verbose=True):
+    def train(self, train_df, verbose=True):
 
         train_df = train_df.rename(columns={self.item_col: ITEM_ID,
-                                            self.time_col: TIMESTAMP, self.session_col:SESSION_ID})
+                                            self.time_col: TIMESTAMP, self.session_col: SESSION_ID})
 
         train_df = train_df.drop_duplicates(subset=[SESSION_ID, ITEM_ID], keep='first')
 
@@ -96,66 +87,80 @@ class CupyVsKnnModel(VsKnnModel):
         if verbose:
             index_arrays = [self._item_id_to_idx, self._item_values,
                             self._sess_id_to_idx, self._sess_values,
-                            self._values_buffer, self._weights_buffer]
+                            ]
             total_bytes = sum([ia.nbytes for ia in index_arrays])
             dmf = round(total_bytes / 10 ** 6, 2)
             print(f"Device memory footprint for index objects: {dmf} Mb)")
 
     def predict(self, query_items):
+        return_data = {
+            'predicted_items': [],
+            'scores': cp.array([])
+        }
+        start = time.time()
+        stream = cp.cuda.Stream(non_blocking=True)
+        stream.use()
+        vb = cp.zeros(self._buffer_shape, dtype=int_type)
+        wb = cp.zeros(self._buffer_shape, dtype=cp.float32)
         query_idx = self.name_map.name_to_idx(query_items, ITEM_ID)
         if query_idx:
-            sessions, session_similarities = self.get_session_similarities(query_idx)
+            sessions, session_similarities = self.get_session_similarities(query_idx, vb, wb)
             if len(sessions) > self.top_k:
                 sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
-            unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
+            unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities, vb, wb)
             if unique_items[0] == 0 and len(unique_items) > 1:
                 unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
-            ret_item_names = self.name_map.idx_to_name(unique_items, ITEM_ID)
-        else:
-            ret_item_names, w_sum_items = [], cp.array([])
-        return ret_item_names, w_sum_items
 
-    def get_session_similarities(self, query):
+            pre_synch = time.time()
+            stream.synchronize()
+            synch_time = time.time() - pre_synch
+            return_data['predicted_items'] = self.name_map.idx_to_name(unique_items, ITEM_ID)
+            return_data['scores'] = w_sum_items
+            return_data['cpu_time'] = pre_synch - start
+            return_data['gpu_time'] = synch_time
+        return return_data
+
+    def get_session_similarities(self, query, vb, wb):
         # todo: check not making deep copy here
         weights = self.weight_function(len(query))
         keys_array = self._item_id_to_idx[query]
         values_array = self._item_values
         sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,
-                                                                self.max_sessions_per_items)
+                                                                self.max_sessions_per_items, vb, wb)
         return sessions, session_similarities
 
     def keep_topk_sessions(self, sessions, session_similarities):
         selection = cp.argsort(session_similarities)[-self.top_k:]
         return sessions[selection], session_similarities[selection]
 
-    def get_item_similarities(self, sessions, session_similarities):
+    def get_item_similarities(self, sessions, session_similarities, vb, wb):
         keys_array = self._sess_id_to_idx[sessions]
         values_array = self._sess_values
         unique_items, w_sum_items = self._get_similarities(keys_array, values_array, session_similarities,
-                                                           self.max_items_per_session)
+                                                           self.max_items_per_session, vb, wb)
         return unique_items, w_sum_items
 
-    def _get_similarities(self, key_array, values_array, weights_array, n_keys):
-        self._copy_values_to_buffer(key_array, values_array, weights_array, n_keys)
-        unique_values = cp.unique(self._values_buffer)
-        similarities = self._reduce_buffer(unique_values)
+    def _get_similarities(self, key_array, values_array, weights_array, n_keys, vb, wb):
+        self._copy_values_to_buffer(key_array, values_array, weights_array, n_keys, vb, wb)
+        unique_values = cp.unique(vb)
+        similarities = self._reduce_buffer(unique_values, vb, wb)
         return unique_values, similarities
 
-    def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys):
+    def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys, vb, wb):
         n_values_per_keys = self.max_sessions_per_items if n_keys == self.max_items_per_session \
             else self.max_items_per_session
         kernel_args = (key_array, values_array, weights_array,
-                         len(key_array), n_values_per_keys, n_keys, self._buffer_shape,
-                         self._values_buffer,  self._weights_buffer)
+                       len(key_array), n_values_per_keys, n_keys, self._buffer_shape,
+                       vb,  wb)
         t_per_block = 256
         target_threads = len(key_array) * n_values_per_keys
         n_blocks = int(target_threads / t_per_block) + 1
         copy_values_kernel((n_blocks,), (t_per_block,), kernel_args)
 
-    def _reduce_buffer(self, unique_values):
+    def _reduce_buffer(self, unique_values, vb, wb):
         out_weights_groupby = cp.zeros_like(unique_values, dtype=cp.float32)
         n_items = self._buffer_shape * len(unique_values)
-        kernel_args = (self._values_buffer, self._weights_buffer, unique_values,
+        kernel_args = (vb, wb, unique_values,
                        len(unique_values), n_items,
                        out_weights_groupby)
         t_per_block = 256

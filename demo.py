@@ -107,10 +107,16 @@ def test_a_model(model, test_data):
 
     pbar = tqdm(test_data)
 
+    total_cpu = []
+    total_gpu = []
+
     for test_session in pbar:
         x, y = session_to_xy(test_session)
         if x is not None:
-            items_pred, item_scores = model.predict(x)
+            prediction = model.predict(x)
+            items_pred, item_scores = prediction['predicted_items'], prediction['scores']
+            total_cpu.append(prediction['cpu_time'])
+            total_gpu.append(prediction['gpu_time'])
             n_treated += 1
             if len(items_pred) > 0:
                 selection = cp.flip(cp.argsort(item_scores)[-20:])
@@ -122,6 +128,8 @@ def test_a_model(model, test_data):
                     pbar.set_postfix({'HR@20': hr20})
 
     time_per_iter = pbar.format_dict['elapsed'] / pbar.format_dict['n']
+
+    print(f"total cpu time: {sum(total_cpu)}, total GPU time: {sum(total_gpu)}")
 
     return time_per_iter, hr20
 
@@ -141,9 +149,9 @@ if __name__ == '__main__':
         with open('test_data.pkl', 'rb') as f:
             test_array = pickle.load(f)
 
-    itertime_rd, hr_rd = test_a_model(model, test_array)
+    itertime_rd, hr_rd = test_a_model(model, test_array[:1000])
     print(f"Ran predictions on {len(test_array)} test examples in {itertime_rd} seconds. HR@20: {hr_rd}")
 
     model2, test_array2 = train_session_rec_repo()
     itertime_rd, hr_rd = test_a_model(model2, test_array2)
-    print(f"Ran predictions on {len(test_array)} test examples in {itertime_rd} seconds. HR@20: {hr_rd}")
+    print(f"Ran predictions on {len(test_array2)} test examples in {itertime_rd} seconds. HR@20: {hr_rd}")

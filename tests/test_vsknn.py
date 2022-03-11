@@ -15,7 +15,8 @@ def test_cupymodel(tiny_vsknn_df, tiny_session):
 
 
 def model_predict_test(model, tiny_session):
-    predicted_items, predicted_score = model.predict(tiny_session)
+    predictions = model.predict(tiny_session)
+    predicted_items, predicted_score = predictions['predicted_items'], predictions['scores']
     predicted_score_py = [float(s) for s in predicted_score]
     assert all([pred == expected for pred, expected in zip(predicted_items, [1, 2, 3, 4, 5, 6])])
     assert all([abs(score - expected) < 0.01 for score, expected

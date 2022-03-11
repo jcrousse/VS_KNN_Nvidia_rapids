@@ -14,6 +14,7 @@ import time
 #  - Measure the speed
 #  - Can we then speedup by using a nex stream for every predict?
 
+
 def request_post(x, y):
     r = requests.post("http://127.0.0.1:8000", params={"q": x})
     rec_items = r.json()['recommended_items']
@@ -74,11 +75,3 @@ if __name__ == '__main__':
 
     print(f"treated {n_queries} in {round(time_taken, 2)} seconds ({round(qps)} per second). \n"
           f"HR@20: {total_hits / n_queries}")
-
-
-    #
-    # asyncio.run(bulk_crawl_and_write(urls=urls))
-
-
-
-

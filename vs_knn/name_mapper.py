@@ -20,7 +20,6 @@ class NameIdxMap:
         causing a KeyError.
         """
         import cudf
-        self.cudf = cudf
         self.skip_missings = skips_missings
 
         self.columns_to_convert = columns_to_convert if columns_to_convert else [SESSION_ID, ITEM_ID]
@@ -31,7 +30,7 @@ class NameIdxMap:
         self._fit = False
 
     def build(self, df):
-
+        import cudf
         self._validate_df(df)
 
         self._transformed_df = df
@@ -39,12 +38,12 @@ class NameIdxMap:
         for col in self.columns_to_convert:
             self._create_col_mappings(df, col)
 
-        _padding = self.cudf.DataFrame(
+        _padding = cudf.DataFrame(
             columns=self._transformed_df.columns,
             data={ITEM_ID: [0], SESSION_ID: [0]},
             dtype=self._transformed_df.dtypes.to_dict())
 
-        self._transformed_df = self.cudf.concat([_padding, self._transformed_df])
+        self._transformed_df = cudf.concat([_padding, self._transformed_df])
 
         return self
 

@@ -43,7 +43,7 @@ def multi_thread_calls(model, inputs, use_own_stream=True):
 
     presynch_time, synch_time, pct_time = [], [], []
     start = time.time()
-    with ThreadPoolExecutor(1) as executor:
+    with ThreadPoolExecutor(20) as executor:
         futures = []
         for in_params in inputs:
             futures.append(executor.submit(model.predict, **in_params, use_own_stream=use_own_stream))
@@ -63,9 +63,9 @@ def multi_thread_calls(model, inputs, use_own_stream=True):
 
 
 if __name__ == '__main__':
-    sm_calls = 20
+    sm_calls = 4
     vsk_calls = 1000
-    sm_input = [{'N': 1024, 'power': 128}] * sm_calls
+    sm_input = [{'N': 1024, 'power': 256}] * sm_calls
     vsk_input = [{'query_items': [214716935]}] * vsk_calls
 
     multi_thread_calls(sm_model, sm_input,  True)

@@ -12,7 +12,8 @@ model.load('../saved_model')
 
 @app.post("/")
 def root(q: List[int] = Query(None)):
-    items_pred, item_scores = model.predict(q)
+    prediction = model.predict(q)
+    items_pred, item_scores = prediction['predicted_items'], prediction['scores']
     items_rec = []
     if len(items_pred) > 0:
         selection = cp.flip(cp.argsort(item_scores)[-20:])
