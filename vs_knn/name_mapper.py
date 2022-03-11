@@ -19,14 +19,13 @@ class NameIdxMap:
         :param skips_missings: if True, a key is not found in name_to_idx function will be skipped instead of
         causing a KeyError.
         """
-        import cudf
         self.skip_missings = skips_missings
 
         self.columns_to_convert = columns_to_convert if columns_to_convert else [SESSION_ID, ITEM_ID]
         self._name_to_idx_map = {col: {} for col in self.columns_to_convert}
         self._idx_to_name_map = {col: cp.array([]) for col in self.columns_to_convert}
 
-        self._transformed_df = cudf.DataFrame()
+        self._transformed_df = None
         self._fit = False
 
     def build(self, df):
@@ -94,6 +93,10 @@ class NameIdxMap:
 
     def get_transformed_df(self):
         return self._transformed_df
+
+    def del_transformed_df(self):
+        del self._transformed_df
+        gc.collect()
 
     def remove_col(self, column_name):
         del self._name_to_idx_map[column_name]

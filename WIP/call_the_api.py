@@ -63,7 +63,7 @@ if __name__ == '__main__':
 
     start = time.time()
 
-    with ThreadPoolExecutor(3) as executor:
+    with ThreadPoolExecutor(100) as executor:
         futures = []
         for t_sess, target in zip(x, y):
             futures.append(executor.submit(request_post, t_sess, target))

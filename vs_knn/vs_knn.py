@@ -68,6 +68,7 @@ class CupyVsKnnModel:
         train_df = train_df.drop(TIMESTAMP, axis=1)
         self.name_map = self.name_map.build(train_df)
         processed_df = self.name_map.get_transformed_df()
+        self.name_map.del_transformed_df()
 
         del train_df
         gc.collect()
@@ -111,6 +112,10 @@ class CupyVsKnnModel:
             if unique_items[0] == 0 and len(unique_items) > 1:
                 unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
 
+            # d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
+            # d_ret = d_mat
+            # for i in range(15):
+            #     d_ret = cp.matmul(d_ret, d_mat)
             pre_synch = time.time()
             stream.synchronize()
             synch_time = time.time() - pre_synch

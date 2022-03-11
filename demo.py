@@ -2,7 +2,7 @@ import gc
 import time
 import os
 import argparse
-import cudf
+# import cudf
 import cupy as cp
 from vs_knn.vs_knn import CupyVsKnnModel
 from tqdm import tqdm
@@ -19,6 +19,7 @@ def get_arguments():
 
 
 def read_dataset(filepath, columns=None, delimiter=','):
+    import cudf
     columns = ['session_id', 'timestamp', 'item_id'] if columns is None else columns
     return cudf.read_csv(filepath,
                          usecols=[0, 1, 2],
@@ -149,7 +150,7 @@ if __name__ == '__main__':
         with open('test_data.pkl', 'rb') as f:
             test_array = pickle.load(f)
 
-    itertime_rd, hr_rd = test_a_model(model, test_array[:1000])
+    itertime_rd, hr_rd = test_a_model(model, test_array[0:30])
     print(f"Ran predictions on {len(test_array)} test examples in {itertime_rd} seconds. HR@20: {hr_rd}")
 
     model2, test_array2 = train_session_rec_repo()
