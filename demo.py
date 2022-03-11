@@ -7,7 +7,7 @@ import cupy as cp
 from vs_knn.vs_knn import CupyVsKnnModel
 from tqdm import tqdm
 import pickle
-
+import asyncio
 
 def get_arguments():
     """Get this script's command line arguments"""
@@ -114,7 +114,9 @@ def test_a_model(model, test_data):
     for test_session in pbar:
         x, y = session_to_xy(test_session)
         if x is not None:
-            prediction = model.predict(x)
+            loop = asyncio.get_event_loop()
+            coroutine = model.predict(x)
+            prediction = loop.run_until_complete(coroutine)
             items_pred, item_scores = prediction['predicted_items'], prediction['scores']
             total_cpu.append(prediction['cpu_time'])
             total_gpu.append(prediction['gpu_time'])

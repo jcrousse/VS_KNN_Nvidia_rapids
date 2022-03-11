@@ -1,5 +1,6 @@
 from vs_knn.vs_knn import CupyVsKnnModel
 import cudf
+import asyncio
 from vs_knn.col_names import SESSION_ID, ITEM_ID
 
 
@@ -15,7 +16,9 @@ def test_cupymodel(tiny_vsknn_df, tiny_session):
 
 
 def model_predict_test(model, tiny_session):
-    predictions = model.predict(tiny_session)
+    loop = asyncio.get_event_loop()
+    coroutine = model.predict(tiny_session)
+    predictions = loop.run_until_complete(coroutine)
     predicted_items, predicted_score = predictions['predicted_items'], predictions['scores']
     predicted_score_py = [float(s) for s in predicted_score]
     assert all([pred == expected for pred, expected in zip(predicted_items, [1, 2, 3, 4, 5, 6])])

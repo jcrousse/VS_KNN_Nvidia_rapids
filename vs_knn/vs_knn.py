@@ -2,6 +2,7 @@ import gc
 import os
 import pickle
 import time
+import asyncio
 
 import cupy as cp
 from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
@@ -93,7 +94,7 @@ class CupyVsKnnModel:
             dmf = round(total_bytes / 10 ** 6, 2)
             print(f"Device memory footprint for index objects: {dmf} Mb)")
 
-    def predict(self, query_items):
+    async def predict(self, query_items):
         return_data = {
             'predicted_items': [],
             'scores': cp.array([])
@@ -116,6 +117,8 @@ class CupyVsKnnModel:
             # d_ret = d_mat
             # for i in range(15):
             #     d_ret = cp.matmul(d_ret, d_mat)
+            while not stream.done:
+                await asyncio.sleep(0.0005)
             pre_synch = time.time()
             stream.synchronize()
             synch_time = time.time() - pre_synch
