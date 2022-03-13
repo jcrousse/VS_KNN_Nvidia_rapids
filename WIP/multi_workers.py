@@ -1,15 +1,11 @@
-import gc
-import time
 from fastapi import FastAPI, Query
 from typing import List
 import uvicorn
 import cupy as cp
 from vs_knn import CupyVsKnnModel
+import sys
 
 app = FastAPI()
-
-model = CupyVsKnnModel()
-model.load('../saved_model')
 
 
 async def predict(q):
@@ -27,4 +23,12 @@ async def root(q: List[int] = Query(None)):
 
 
 if __name__ == "__main__":
-    uvicorn.run("multi_workers:app", host="0.0.0.0", port=8000, workers=2)
+    num_workers = sys.argv[0]
+    model = CupyVsKnnModel()
+    model.load('../saved_model')
+    model.save_shared_pointers('model_ptr.pkl')
+    uvicorn.run("multi_workers:app", host="0.0.0.0", port=8000, workers=num_workers)
+else:
+    model = CupyVsKnnModel()
+    model.load('../saved_model')
+    # model.load_shared_pointers('model_ptr.pkl')
