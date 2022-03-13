@@ -152,7 +152,7 @@ if __name__ == '__main__':
         with open('test_data.pkl', 'rb') as f:
             test_array = pickle.load(f)
 
-    itertime_rd, hr_rd = test_a_model(model, test_array[0:30])
+    itertime_rd, hr_rd = test_a_model(model, test_array)
     print(f"Ran predictions on {len(test_array)} test examples in {itertime_rd} seconds. HR@20: {hr_rd}")
 
     model2, test_array2 = train_session_rec_repo()
