@@ -39,8 +39,6 @@ class CupyVsKnnModel:
         self._sess_id_to_idx, self._sess_values = cp.empty(1), cp.empty(1)
 
         self._buffer_shape = max_sessions_per_items * max_item_per_session
-        # self._values_buffer = cp.zeros(self._buffer_shape, dtype=int_type)
-        # self._weights_buffer = cp.zeros(self._buffer_shape, dtype=cp.float32)
 
         self.item_col, self.time_col, self.session_col = item_col, time_col, session_col
 
@@ -97,7 +95,9 @@ class CupyVsKnnModel:
     async def predict(self, query_items):
         return_data = {
             'predicted_items': [],
-            'scores': cp.array([])
+            'scores': cp.array([]),
+            'cpu_time': 0,
+            'gpu_time': 0
         }
         start = time.time()
         stream = cp.cuda.Stream(non_blocking=True)
