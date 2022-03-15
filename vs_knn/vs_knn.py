@@ -29,7 +29,7 @@ def no_decay(n):
 
 class CupyVsKnnModel:
     def __init__(self,  decay='linear', top_k=100, max_sessions_per_items=5000, max_item_per_session=10,
-                 item_col=ITEM_ID, time_col=TIMESTAMP, session_col=SESSION_ID):
+                 item_col=ITEM_ID, time_col=TIMESTAMP, session_col=SESSION_ID, waste_some_time=False):
         self.top_k = top_k
 
         self.max_sessions_per_items = max_sessions_per_items
@@ -43,6 +43,8 @@ class CupyVsKnnModel:
         self.item_col, self.time_col, self.session_col = item_col, time_col, session_col
 
         self.name_map = NameIdxMap(skips_missings=True)
+
+        self.waste_some_time = waste_some_time
 
         if decay == 'linear':
             self.weight_function = linear_decay
@@ -113,13 +115,14 @@ class CupyVsKnnModel:
             if unique_items[0] == 0 and len(unique_items) > 1:
                 unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
 
-            # d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
-            # d_ret = d_mat
-            # for i in range(15):
-            #     d_ret = cp.matmul(d_ret, d_mat)
+            if self.waste_some_time:
+                d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
+                d_ret = d_mat
+                for i in range(15):
+                    d_ret = cp.matmul(d_ret, d_mat)
+            pre_synch = time.time()
             while not stream.done:
                 await asyncio.sleep(0.0005)
-            pre_synch = time.time()
             stream.synchronize()
             synch_time = time.time() - pre_synch
             return_data['predicted_items'] = self.name_map.idx_to_name(unique_items, ITEM_ID)
