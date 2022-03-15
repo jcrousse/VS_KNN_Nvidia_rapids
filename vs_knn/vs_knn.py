@@ -229,3 +229,54 @@ class CupyVsKnnModel:
             self.max_items_per_session = stored_params["max_items_per_session"]
             self.name_map = stored_params["name_map"]
             self.weight_function = stored_params["weight_function"]
+
+    def save_shared_pointers(self, filepath):
+        """
+        Four arrays to store as ptr:
+        self._item_id_to_idx, self._item_values, self._sess_id_to_idx, self._sess_values
+
+        """
+        _mem_ptrs = {
+            "_item_id_to_idx": self._item_id_to_idx,
+            "_item_values": self._item_values,
+            "_sess_id_to_idx": self._sess_id_to_idx,
+            "_sess_values": self._sess_values,
+        }
+
+        shared_pointers = {}
+        for shared_array_key, shared_array in _mem_ptrs.items():
+            shared_pointers[shared_array_key] = {
+                "ptr": shared_array.data.ptr,
+                "shape": shared_array.shape,
+                "dtype": shared_array.dtype
+            }
+        with open(filepath, 'wb') as f:
+            pickle.dump(shared_pointers, f)
+
+    def load_shared_pointers(self, filepath):
+        # todo: need low level CUDA IPC functions to actually share arrays between different processes
+        mempool = cp.get_default_memory_pool()
+        del self._item_id_to_idx, self._item_values, self._sess_id_to_idx, self._sess_values
+        gc.collect()
+        mempool.free_all_blocks()
+        with open(filepath, 'rb') as f:
+            shared_pointers = pickle.load(f)
+
+        mempool = cp.get_default_memory_pool()
+        basemem = cp.cuda.memory.BaseMemory(mempool)
+
+        shared_arrays = {}
+
+        for array_key in ["_item_id_to_idx", "_item_values", "_sess_id_to_idx", "_sess_values"]:
+            basemem.ptr = shared_pointers[array_key]["ptr"]
+            ptr = cp.cuda.memory.MemoryPointer(basemem, 0)
+            shared_array = cp.ndarray(
+                shape=shared_pointers[array_key]['shape'],
+                memptr=ptr,
+                dtype=shared_pointers[array_key]['dtype'])
+            shared_arrays[array_key] = shared_array
+
+        self._item_id_to_idx = shared_arrays["_item_id_to_idx"]
+        self._item_values = shared_arrays["_item_values"]
+        self._sess_id_to_idx = shared_arrays["_sess_id_to_idx"]
+        self._sess_values = shared_arrays["_sess_values"]
