@@ -106,39 +106,41 @@ class CupyVsKnnModel:
         stream.use()
         values_buffer = cp.zeros((self._buffer_shape, len(queries)), dtype=int_type)
         weights_buffer = cp.zeros((self._buffer_shape, len(queries)), dtype=cp.float32)
-        query_idx = self.name_map.name_to_idx(queries, ITEM_ID)
-        if query_idx:
-            sessions, session_similarities = self.get_session_similarities(query_idx, values_buffer, weights_buffer)
-            if len(sessions) > self.top_k:
-                sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
-            unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities, values_buffer,
-                                                                   weights_buffer)
-            if unique_items[0] == 0 and len(unique_items) > 1:
-                unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
+        queries_py = self.name_map.name_to_idx(queries, ITEM_ID)
+        query_idx = cp.vstack([cp.pad(cp.array(q), (0, self.max_items_per_session - len(q))) for q in queries_py])
 
-            if self.waste_some_time:
-                d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
-                d_ret = d_mat
-                for i in range(15):
-                    d_ret = cp.matmul(d_ret, d_mat)
-            pre_synch = time.time()
-            while not stream.done:
-                await asyncio.sleep(0.0005)
-            stream.synchronize()
-            synch_time = time.time() - pre_synch
-            return_data['predicted_items'] = self.name_map.idx_to_name(unique_items, ITEM_ID)
-            return_data['scores'] = w_sum_items
-            return_data['cpu_time'] = pre_synch - start
-            return_data['gpu_time'] = synch_time
+        sessions, session_similarities = self.get_session_similarities(query_idx, values_buffer, weights_buffer)
+        if len(sessions) > self.top_k:
+            sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
+        unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities, values_buffer,
+                                                               weights_buffer)
+        if unique_items[0] == 0 and len(unique_items) > 1:
+            unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
+
+        if self.waste_some_time:
+            d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
+            d_ret = d_mat
+            for i in range(15):
+                d_ret = cp.matmul(d_ret, d_mat)
+        pre_synch = time.time()
+        while not stream.done:
+            await asyncio.sleep(0.0005)
+        stream.synchronize()
+        synch_time = time.time() - pre_synch
+        return_data['predicted_items'] = self.name_map.idx_to_name(unique_items, ITEM_ID)
+        return_data['scores'] = w_sum_items
+        return_data['cpu_time'] = pre_synch - start
+        return_data['gpu_time'] = synch_time
         return return_data
 
-    def get_session_similarities(self, query, vb, wb):
-        # todo: check not making deep copy here
-        weights = self.weight_function(len(query))
+    def get_session_similarities(self, query, values_buffer, weights_buffer):
+        weights = self.weight_function(self.max_items_per_session)
+        # self._item_id_to_idx[cp.array(qq).flatten()].reshape(qq.shape)
         keys_array = self._item_id_to_idx[query]
         values_array = self._item_values
         sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,
-                                                                self.max_sessions_per_items, vb, wb)
+                                                                self.max_sessions_per_items,
+                                                                values_buffer, weights_buffer)
         return sessions, session_similarities
 
     def keep_topk_sessions(self, sessions, session_similarities):
@@ -153,27 +155,27 @@ class CupyVsKnnModel:
                                                            self.max_items_per_session, vb, wb)
         return unique_items, w_sum_items
 
-    def _get_similarities(self, key_array, values_array, weights_array, n_keys, vb, wb):
-        self._copy_values_to_buffer(key_array, values_array, weights_array, n_keys, vb, wb)
-        unique_values = cp.unique(vb)
-        similarities = self._reduce_buffer(unique_values, vb, wb)
+    def _get_similarities(self, key_array, values_array, weights_array, n_keys, values_buffer, weights_buffer):
+        self._copy_values_to_buffer(key_array, values_array, weights_array, n_keys, values_buffer, weights_buffer)
+        unique_values = cp.unique(values_buffer)
+        similarities = self._reduce_buffer(unique_values, values_buffer, weights_buffer)
         return unique_values, similarities
 
-    def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys, vb, wb):
+    def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys, values_buffer, weights_buffer):
         n_values_per_keys = self.max_sessions_per_items if n_keys == self.max_items_per_session \
             else self.max_items_per_session
         kernel_args = (key_array, values_array, weights_array,
                        len(key_array), n_values_per_keys, n_keys, self._buffer_shape,
-                       vb,  wb)
+                       values_buffer, weights_buffer)
         t_per_block = 256
         target_threads = len(key_array) * n_values_per_keys
         n_blocks = int(target_threads / t_per_block) + 1
         copy_values_kernel((n_blocks,), (t_per_block,), kernel_args)
 
-    def _reduce_buffer(self, unique_values, vb, wb):
+    def _reduce_buffer(self, unique_values, values_buffer, weights_buffer):
         out_weights_groupby = cp.zeros_like(unique_values, dtype=cp.float32)
         n_items = self._buffer_shape * len(unique_values)
-        kernel_args = (vb, wb, unique_values,
+        kernel_args = (values_buffer, weights_buffer, unique_values,
                        len(unique_values), n_items,
                        out_weights_groupby)
         t_per_block = 256
