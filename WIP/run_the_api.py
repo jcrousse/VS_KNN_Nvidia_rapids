@@ -4,6 +4,8 @@ from vs_knn.vs_knn import CupyVsKnnModel
 import uvicorn
 import cupy as cp
 
+# for minibatch API check this out:
+# https://levelup.gitconnected.com/fastapi-how-to-process-incoming-requests-in-batches-b384a1406ec
 
 app = FastAPI()
 

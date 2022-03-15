@@ -15,7 +15,13 @@ def test_cupymodel(tiny_vsknn_df, tiny_session):
     model_predict_test(model, tiny_session)
 
 
-def model_predict_test(model, tiny_session):
+def test_cupymodel_batch(tiny_vsknn_df, tiny_batch):
+    model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20)
+    model.train(tiny_vsknn_df)
+    model_predict_test(model, tiny_batch)
+
+
+def model_predict_test(model: CupyVsKnnModel, tiny_session):
     loop = asyncio.get_event_loop()
     coroutine = model.predict(tiny_session)
     predictions = loop.run_until_complete(coroutine)

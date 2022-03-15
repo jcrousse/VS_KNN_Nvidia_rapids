@@ -111,7 +111,12 @@ def tiny_vsknn_df() -> cudf.DataFrame:
 
 @pytest.fixture
 def tiny_session():
-    return [3, 4, 5]
+    return [[3, 4, 5]]
+
+
+@pytest.fixture
+def tiny_batch():
+    return [[3, 4, 5], [3, 4, 5]]
 
 
 def flatten2d(matrix):

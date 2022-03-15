@@ -94,7 +94,7 @@ class CupyVsKnnModel:
             dmf = round(total_bytes / 10 ** 6, 2)
             print(f"Device memory footprint for index objects: {dmf} Mb)")
 
-    async def predict(self, query_items):
+    async def predict(self, queries: list):
         return_data = {
             'predicted_items': [],
             'scores': cp.array([]),
@@ -104,14 +104,15 @@ class CupyVsKnnModel:
         start = time.time()
         stream = cp.cuda.Stream(non_blocking=True)
         stream.use()
-        vb = cp.zeros(self._buffer_shape, dtype=int_type)
-        wb = cp.zeros(self._buffer_shape, dtype=cp.float32)
-        query_idx = self.name_map.name_to_idx(query_items, ITEM_ID)
+        values_buffer = cp.zeros((self._buffer_shape, len(queries)), dtype=int_type)
+        weights_buffer = cp.zeros((self._buffer_shape, len(queries)), dtype=cp.float32)
+        query_idx = self.name_map.name_to_idx(queries, ITEM_ID)
         if query_idx:
-            sessions, session_similarities = self.get_session_similarities(query_idx, vb, wb)
+            sessions, session_similarities = self.get_session_similarities(query_idx, values_buffer, weights_buffer)
             if len(sessions) > self.top_k:
                 sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
-            unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities, vb, wb)
+            unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities, values_buffer,
+                                                                   weights_buffer)
             if unique_items[0] == 0 and len(unique_items) > 1:
                 unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
 
@@ -141,6 +142,7 @@ class CupyVsKnnModel:
         return sessions, session_similarities
 
     def keep_topk_sessions(self, sessions, session_similarities):
+        # todo: cp.agsort(session_similarities)[, -self.top_k:]  cp.take_along_axis(sessions, selection, 1)
         selection = cp.argsort(session_similarities)[-self.top_k:]
         return sessions[selection], session_similarities[selection]
 
@@ -178,9 +180,6 @@ class CupyVsKnnModel:
         n_blocks = int(n_items / t_per_block) + 1
         groubpy_kernel((n_blocks,), (t_per_block,), kernel_args)
         return out_weights_groupby
-
-    def _step3_keep_topk_sessions(self, session_items):
-        raise NotImplementedError
 
     def _keep_n_latest_sessions(self, train_data):
         return self._keep_n_latest_values(train_data, ITEM_ID, self.max_sessions_per_items)
