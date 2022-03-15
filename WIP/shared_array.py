@@ -1,19 +1,3 @@
-
-
-# TODO:
-#   -Can a RawKernel operate on arrays in two different streams? (read from one write to the other)
-#   -read https://stackoverflow.com/questions/64581056/how-to-properly-use-cupy-streams
-#   -Can RawKernels be submitted concurrently?
-#   -How to? Processes ? Asyncio ? Watch this? https://www.youtube.com/watch?v=9h_dD6OKgq4
-#   -Maybe asyncio with 1ms wait time to check if something is there? That would be nice
-#   -SO Question: How do I run this simple predict model concurrently on a single device,??
-#           Ideally in multiprocessing ? But I don't want to re_initialize model in every sub process
-#   -Back to Asyncio? ? But already asynchronous?
-#       Try a simple example with a function that
-#           creates a large array, sort it once, twice, averages it, returns the results
-#       Can we start by doing it in a stream then "await" on the function return to host?
-#       Is it enough to just asycio sleep at the end??
-
 import cupy as cp
 import pickle
 import tempfile
@@ -50,6 +34,7 @@ new_array = cp.ndarray(shape=data_pointer_loaded['shape'], memptr=ptr, dtype=dat
 new_array[0] = 0
 assert shared_array[0] == 0
 
+del shared_array
 
 slow_kernel = cp.RawKernel(r'''
 extern "C" __global__
