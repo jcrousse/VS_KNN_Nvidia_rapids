@@ -7,7 +7,7 @@ kernels = pytest.importorskip("vs_knn.custom_kernels")
 
 sessions_per_item, items_per_session = 5000, 10
 start_idx = [0, 1000, 5000, 10000, 15000, 20000, 25000, 30000]
-len_per_idx = [1, 10, 5, 2, 3, 5, 2, 10]
+len_per_idx = [0, 10, 5, 2, 3, 5, 2, 10]
 start_end_idx = [[e, e + l] for e, l in zip(start_idx, len_per_idx)]
 
 values_array = cp.arange(17646935, dtype=cp.intc)
@@ -21,7 +21,7 @@ weight_array = cp.arange(items_per_session, dtype=cp.float32) / items_per_sessio
 
 buffer_len = sessions_per_item * items_per_session
 out_values = cp.random.randint(1, 100, (buffer_len, len(test_sessions_py)), dtype=cp.intc)
-out_weights = cp.random.random(buffer_len, dtype=cp.float32)
+out_weights = cp.random.random((buffer_len, len(test_sessions_py)), dtype=cp.float32)
 
 values_buffer = cp.random.randint(0, 500, (buffer_len, len(test_sessions_py)), dtype=cp.intc)
 weight_buffer = cp.random.random((buffer_len, len(test_sessions_py)), dtype=cp.float32)
@@ -55,7 +55,7 @@ def test_tiny_copy():
     #                            [3, 4, 0, 0, 0]], dtype=cp.intc)
 
     tiny_idx_array = cp.array([[1, 3], [5, 10], [20, 22], [0, 0], [0, 0],
-                      [12, 16], [20, 22]], dtype=cp.intc)
+                               [12, 16], [20, 22], [0, 0], [0, 0], [0, 0]], dtype=cp.intc)
     tiny_values = cp.arange(25, dtype=cp.intc)
     tiny_weights = cp.arange(5, dtype=cp.float32) / 10
 
@@ -70,12 +70,24 @@ def test_tiny_copy():
 
     assert out_tv[:, 0].sum() == 114
     assert out_tv[:, 1].sum() == 133
+    assert round(float(out_tw[:, 0].sum()) * 10) == 12
+    assert round(float(out_tw[:, 1].sum()) * 10) == 3
 
 
 def test_copy_kernel():
     for _ in range(3):
         run_copy_kernel()
-        _ = [value_array_check(i) for i in [1, 100, 1000, 5000, 5004, 5005, 25001]]
+        _ = [value_array_check(i, j) for i, j in [(1, 0),
+                                                  (100, 0),
+                                                  (1000, 0),
+                                                  (5000, 0),
+                                                  (5004, 0),
+                                                  (5005, 0),
+                                                  (25001, 0),
+                                                  (0, 1),
+                                                  (1, 1),
+                                                  (5004, 1),
+                                                  ]]
 
 
 def run_copy_kernel():
@@ -88,10 +100,10 @@ def run_copy_kernel():
     kernels.copy_values_kernel((n_blocks, ), (t_per_block,), kernel_args)
 
 
-def value_array_check(out_idx):
+def value_array_check(out_idx, session_id):
     idx_in_input_session = out_idx // sessions_per_item
     idx_in_hist_sessions = out_idx % sessions_per_item
-    item_id = int(test_session[idx_in_input_session])
+    item_id = int(test_sessions[session_id, idx_in_input_session])
     value_idx = start_idx[item_id] + idx_in_hist_sessions
     if idx_in_hist_sessions > len_per_idx[item_id]:
         expected_value = 0
@@ -100,8 +112,8 @@ def value_array_check(out_idx):
         expected_value = int(values_array[value_idx])
         expected_weight = float(weight_array[idx_in_input_session])
 
-    assert expected_value == int(out_values[out_idx])
-    assert expected_weight == float(out_weights[out_idx])
+    assert expected_value == int(out_values[out_idx, session_id])
+    assert expected_weight == float(out_weights[out_idx, session_id])
 
 
 def test_copy_kernel_speed():
