@@ -10,7 +10,7 @@ def shuffle_df(df: cudf.DataFrame):
 
 
 def test_cupymodel(tiny_vsknn_df, tiny_session):
-    #TODO test what happens if none of the query values are found in mapping
+    # TODO test what happens if none of the query values are found in mapping
     model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20)
     model.train(tiny_vsknn_df)
     model_predict_test(model, tiny_session)

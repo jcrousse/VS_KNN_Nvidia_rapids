@@ -107,7 +107,8 @@ class CupyVsKnnModel:
         values_buffer = cp.zeros((self._buffer_shape, len(queries)), dtype=int_type)
         weights_buffer = cp.zeros((self._buffer_shape, len(queries)), dtype=cp.float32)
         queries_py = self.name_map.name_to_idx(queries, ITEM_ID)
-        query_idx = cp.vstack([cp.pad(cp.array(q), (0, self.max_items_per_session - len(q))) for q in queries_py])
+        query_idx = cp.vstack([cp.pad(cp.array(q, dtype=int_type), (0, self.max_items_per_session - len(q)))
+                               for q in queries_py])
 
         sessions, session_similarities = self.get_session_similarities(query_idx, values_buffer, weights_buffer)
         if len(sessions) > self.top_k:

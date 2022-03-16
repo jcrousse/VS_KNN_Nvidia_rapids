@@ -11,18 +11,65 @@ len_per_idx = [1, 10, 5, 2, 3, 5, 2, 10]
 start_end_idx = [[e, e + l] for e, l in zip(start_idx, len_per_idx)]
 
 values_array = cp.arange(17646935, dtype=cp.intc)
-test_session = cp.array([1, 2, 3, 6, 2, 2, 2], dtype=cp.intc)
-idx_array = cp.vstack([start_end_idx[int(i)] for i in test_session]).astype(cp.intc)
-weight_array = cp.arange(len(test_session), dtype=cp.float32) / len(test_session)
+test_sessions_py = [[1, 2, 3, 6, 2, 2, 2], [1, 2, 3]]
+test_sessions = cp.vstack([cp.pad(cp.array(q, dtype=cp.intc), (0, items_per_session - len(q)))
+                           for q in test_sessions_py])
+# test_session = cp.array([1, 2, 3, 6, 2, 2, 2], dtype=cp.intc)
 
-buffer_shape = sessions_per_item * items_per_session
-out_values = cp.random.randint(1, 100, buffer_shape, dtype=cp.intc)
-out_weights = cp.random.random(buffer_shape, dtype=cp.float32)
+idx_array = cp.vstack([start_end_idx[int(i)] for i in test_sessions.flatten()]).astype(cp.intc)
+weight_array = cp.arange(items_per_session, dtype=cp.float32) / items_per_session
 
-values_buffer = cp.random.randint(0, 500, buffer_shape, dtype=cp.intc)
-weight_buffer = cp.random.random(buffer_shape, dtype=cp.float32)
+buffer_len = sessions_per_item * items_per_session
+out_values = cp.random.randint(1, 100, (buffer_len, len(test_sessions_py)), dtype=cp.intc)
+out_weights = cp.random.random(buffer_len, dtype=cp.float32)
+
+values_buffer = cp.random.randint(0, 500, (buffer_len, len(test_sessions_py)), dtype=cp.intc)
+weight_buffer = cp.random.random((buffer_len, len(test_sessions_py)), dtype=cp.float32)
 
 unique_values = cp.unique(values_buffer)
+
+
+def test_tiny_copy():
+    """
+    Simple copy kernel test.
+
+    Input sessions = [[1, 2, 4], [3, 4]]
+    Converted to cupy with items_per_session=5:
+        [[1, 2, 4, 0, 0],
+        [3, 4, 0, 0, 0]]
+
+    sessions_per_items=10
+    batch_size = 2.
+
+    idx_array =
+        [[1, 3],
+        [5, 10],
+        [12, 16],
+        [20, 22]]
+
+    values_array = cp.arange(25)
+    weights = [0.1, 0.2, 0.3, 0.4, 0.5]
+
+    """
+    # tiny_idx_array = cp.array([[1, 2, 4, 0, 0],
+    #                            [3, 4, 0, 0, 0]], dtype=cp.intc)
+
+    tiny_idx_array = cp.array([[1, 3], [5, 10], [20, 22], [0, 0], [0, 0],
+                      [12, 16], [20, 22]], dtype=cp.intc)
+    tiny_values = cp.arange(25, dtype=cp.intc)
+    tiny_weights = cp.arange(5, dtype=cp.float32) / 10
+
+    out_tv = cp.zeros((50, 2), dtype=cp.intc)
+    out_tw = cp.zeros((50, 2), dtype=cp.float32)
+
+    kernels.copy_values_kernel((1,), (100,),
+                               (tiny_idx_array, tiny_values, tiny_weights,
+                                len(tiny_idx_array), 10, 5, 50, 2,
+                                out_tv, out_tw
+    ))
+
+    assert out_tv[:, 0].sum() == 114
+    assert out_tv[:, 1].sum() == 133
 
 
 def test_copy_kernel():
@@ -33,7 +80,7 @@ def test_copy_kernel():
 
 def run_copy_kernel():
     kernel_args = (idx_array, values_array, weight_array,
-                   len(idx_array), sessions_per_item, items_per_session, buffer_shape,
+                   len(idx_array), sessions_per_item, items_per_session, buffer_len, len(test_sessions_py),
                    out_values, out_weights)
     t_per_block = 256
     target_threads = len(idx_array) * sessions_per_item
