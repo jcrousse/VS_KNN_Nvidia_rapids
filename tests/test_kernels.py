@@ -20,13 +20,17 @@ idx_array = cp.vstack([start_end_idx[int(i)] for i in test_sessions.flatten()]).
 weight_array = cp.arange(items_per_session, dtype=cp.float32) / items_per_session
 
 buffer_len = sessions_per_item * items_per_session
-out_values = cp.random.randint(1, 100, (buffer_len, len(test_sessions_py)), dtype=cp.intc)
-out_weights = cp.random.random((buffer_len, len(test_sessions_py)), dtype=cp.float32)
+out_values = cp.random.randint(1, 100, (len(test_sessions_py), buffer_len), dtype=cp.intc)
+out_weights = cp.random.random((len(test_sessions_py), buffer_len), dtype=cp.float32)
 
-values_buffer = cp.random.randint(0, 500, (buffer_len, len(test_sessions_py)), dtype=cp.intc)
+values_buffer = cp.random.randint(0, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc)
 weight_buffer = cp.random.random((buffer_len, len(test_sessions_py)), dtype=cp.float32)
 
-unique_values = cp.unique(values_buffer)
+groupby_v_buffer = cp.random.randint(0, 500, (buffer_len, len(test_sessions_py)), dtype=cp.intc)
+unique_values = cp.vstack(
+    [cp.pad(cp.unique(values_buffer[:, i]), (0, values_buffer.shape[0]))
+     for i in range(len(test_sessions_py))]
+)
 
 
 def test_tiny_copy():
@@ -59,8 +63,8 @@ def test_tiny_copy():
     tiny_values = cp.arange(25, dtype=cp.intc)
     tiny_weights = cp.arange(5, dtype=cp.float32) / 10
 
-    out_tv = cp.zeros((50, 2), dtype=cp.intc)
-    out_tw = cp.zeros((50, 2), dtype=cp.float32)
+    out_tv = cp.zeros((2, 50), dtype=cp.intc)
+    out_tw = cp.zeros((2, 50), dtype=cp.float32)
 
     kernels.copy_values_kernel((1,), (100,),
                                (tiny_idx_array, tiny_values, tiny_weights,
@@ -68,10 +72,10 @@ def test_tiny_copy():
                                 out_tv, out_tw
     ))
 
-    assert out_tv[:, 0].sum() == 114
-    assert out_tv[:, 1].sum() == 133
-    assert round(float(out_tw[:, 0].sum()) * 10) == 12
-    assert round(float(out_tw[:, 1].sum()) * 10) == 3
+    assert out_tv[0, :].sum() == 114
+    assert out_tv[1, :].sum() == 133
+    assert round(float(out_tw[0, :].sum()) * 10) == 12
+    assert round(float(out_tw[1, :].sum()) * 10) == 3
 
 
 def test_copy_kernel():
@@ -112,8 +116,8 @@ def value_array_check(out_idx, session_id):
         expected_value = int(values_array[value_idx])
         expected_weight = float(weight_array[idx_in_input_session])
 
-    assert expected_value == int(out_values[out_idx, session_id])
-    assert expected_weight == float(out_weights[out_idx, session_id])
+    assert expected_value == int(out_values[session_id, out_idx])
+    assert expected_weight == float(out_weights[session_id, out_idx])
 
 
 def test_copy_kernel_speed():
@@ -122,6 +126,51 @@ def test_copy_kernel_speed():
 
 def test_groupby_kernel_speed():
     print(repeat(run_groupby_kernel, n_repeat=1000))
+
+
+def test_tiny_groupby():
+    """
+    unique_values =
+    [[1, 2, 3, 4, 0, 0, 0],
+    [1, 2, 3, 0, 0, 0, 0]]
+
+    values_buffer =
+    [[1, 1, 0, 0, 2, 2, 2, 0, 3, 4],
+    [1, 0, 0, 0, 2, 0, 0, 3, 0, 0]]
+
+    weigts_buffer =
+    [[1., 1., 0, 0, 2., 2., 2., 0, 3., 4],
+    [1., 0, 0, 0, 2., 0, 0, 3., 0, 0]]
+
+    result:
+    [[2., 6., 3., 4., 0, 0, 0],
+    [1., 2., 3., 0, 0, 0, 0]]
+    """
+    tiny_unique = cp.array(
+        [[1, 2, 3, 4, 0, 0, 0],
+         [1, 2, 3, 0, 0, 0, 0]], dtype=cp.intc)
+
+    tiny_vb = cp.array(
+        [[1, 1, 0, 0, 2, 2, 2, 0, 3, 4],
+         [1, 0, 0, 0, 2, 0, 0, 3, 0, 0]], dtype=cp.intc)
+
+    tiny_wb = cp.copy(tiny_vb).astype(cp.float32)
+    res = cp.zeros_like(tiny_unique, dtype=cp.float32)
+    kernels.groubpy_kernel((1,),
+                           (256,),
+                           (tiny_vb, tiny_wb, tiny_unique,
+                            7, 10, 2,
+                            res))
+    res = res.astype(cp.intc)
+    assert res[0, 0] == 2
+    assert res[0, 1] == 6
+    assert res[0, 2] == 3
+    assert res[0, 3] == 4
+    assert res[0, 4] == 0
+    assert res[1, 0] == 1
+    assert res[1, 1] == 2
+    assert res[1, 2] == 3
+    assert res[1, 3] == 0
 
 
 def test_groupby_kernel():
