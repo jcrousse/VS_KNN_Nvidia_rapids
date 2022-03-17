@@ -9,6 +9,7 @@ sessions_per_item, items_per_session = 5000, 10
 start_idx = [0, 1000, 5000, 10000, 15000, 20000, 25000, 30000]
 len_per_idx = [0, 10, 5, 2, 3, 5, 2, 10]
 start_end_idx = [[e, e + l] for e, l in zip(start_idx, len_per_idx)]
+cp.random.seed(7357)
 
 values_array = cp.arange(17646935, dtype=cp.intc)
 test_sessions_py = [[1, 2, 3, 6, 2, 2, 2], [1, 2, 3]]
@@ -23,10 +24,10 @@ buffer_len = sessions_per_item * items_per_session
 out_values = cp.random.randint(1, 100, (len(test_sessions_py), buffer_len), dtype=cp.intc)
 out_weights = cp.random.random((len(test_sessions_py), buffer_len), dtype=cp.float32)
 
-values_buffer = cp.random.randint(1, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc)
-weight_buffer = cp.random.random((len(test_sessions_py), buffer_len), dtype=cp.float32)
-
-groupby_v_buffer = cp.random.randint(1, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc)
+mask = cp.random.randint(0, 2, (len(test_sessions_py), buffer_len), dtype=cp.intc)
+values_buffer = cp.random.randint(1, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc) * mask
+weight_buffer = cp.random.random((len(test_sessions_py), buffer_len), dtype=cp.float32) * mask
+weight_buffer = weight_buffer.astype(cp.float32)
 
 arrays_unique = [cp.unique(values_buffer[i, :]) for i in range(len(test_sessions_py))]
 target_width = max([len(arr) for arr in arrays_unique])
