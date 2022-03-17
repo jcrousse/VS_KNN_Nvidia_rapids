@@ -23,13 +23,15 @@ buffer_len = sessions_per_item * items_per_session
 out_values = cp.random.randint(1, 100, (len(test_sessions_py), buffer_len), dtype=cp.intc)
 out_weights = cp.random.random((len(test_sessions_py), buffer_len), dtype=cp.float32)
 
-values_buffer = cp.random.randint(0, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc)
-weight_buffer = cp.random.random((buffer_len, len(test_sessions_py)), dtype=cp.float32)
+values_buffer = cp.random.randint(1, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc)
+weight_buffer = cp.random.random((len(test_sessions_py), buffer_len), dtype=cp.float32)
 
-groupby_v_buffer = cp.random.randint(0, 500, (buffer_len, len(test_sessions_py)), dtype=cp.intc)
+groupby_v_buffer = cp.random.randint(1, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc)
+
+arrays_unique = [cp.unique(values_buffer[i, :]) for i in range(len(test_sessions_py))]
+target_width = max([len(arr) for arr in arrays_unique])
 unique_values = cp.vstack(
-    [cp.pad(cp.unique(values_buffer[:, i]), (0, values_buffer.shape[0]))
-     for i in range(len(test_sessions_py))]
+    [cp.pad(arr, (0, target_width - len(arr))) for arr in arrays_unique]
 )
 
 
@@ -175,33 +177,34 @@ def test_tiny_groupby():
 
 def test_groupby_kernel():
     calc_weights = run_groupby_kernel()
-    weight_array_check(calc_weights)
+    for batch_id in range(values_buffer.shape[0]):
+        weight_array_check(calc_weights, batch_id)
 
 
 def run_groupby_kernel():
     out_weights_groupby = cp.zeros_like(unique_values, dtype=cp.float32)
-    n_items = len(values_buffer) * len(unique_values)
     kernel_args = (values_buffer, weight_buffer, unique_values,
-                   len(unique_values), n_items,
+                   unique_values.shape[1], values_buffer.shape[1], values_buffer.shape[0],
                    out_weights_groupby)
     t_per_block = 256
-    n_blocks = int( n_items/ t_per_block) + 1
+    n_items = unique_values.shape[1] * values_buffer.shape[1] * values_buffer.shape[0]
+    n_blocks = int(n_items / t_per_block) + 1
     kernels.groubpy_kernel((n_blocks, ), (t_per_block,), kernel_args)
     return out_weights_groupby
 
 
-def weight_array_check(calculated_weights):
+def weight_array_check(calculated_weights, batch_id):
     df = cudf.DataFrame(data={
-        'group_key': values_buffer,
-        'agg_val': weight_buffer
+        'group_key': values_buffer[batch_id],
+        'agg_val': weight_buffer[batch_id]
     })
     df = df.groupby('group_key').agg({'agg_val': 'sum'}).sort_index()
     expected_weights = df['agg_val'].values
 
     def f_to_i(x):
         return round(float(x) * 10)
-    comparison_key = [int(ek) == int(ck) for ek, ck in zip(unique_values, df.index.values)]
-    comparison_weights = [f_to_i(ew) == f_to_i(cw) for ew, cw in zip(expected_weights, calculated_weights)]
+    comparison_key = [int(ek) == int(ck) for ek, ck in zip(unique_values[batch_id], df.index.values)]
+    comparison_weights = [f_to_i(ew) == f_to_i(cw) for ew, cw in zip(expected_weights, calculated_weights[batch_id])]
 
     assert all(comparison_key)
     assert all(comparison_weights)
