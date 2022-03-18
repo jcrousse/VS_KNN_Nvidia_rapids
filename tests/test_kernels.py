@@ -76,12 +76,10 @@ def test_tiny_copy():
 
     out_tv = cp.zeros((2, 50), dtype=cp.intc)
     out_tw = cp.zeros((2, 50), dtype=cp.float32)
-
-    kernels.copy_values_kernel((1,), (100,),
-                               (tiny_idx_array, tiny_values, tiny_weights,
-                                len(tiny_idx_array), 10, 5, 50, 2,
-                                out_tv, out_tw
-    ))
+    kernel_args = (tiny_idx_array, tiny_values, tiny_weights,
+                   len(tiny_idx_array), 10, 5, 50, 2,
+                   out_tv, out_tw)
+    kernels.copy_values_kernel((1,), (100,), kernel_args)
 
     assert out_tv[0, :].sum() == 114
     assert out_tv[1, :].sum() == 133

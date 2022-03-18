@@ -28,8 +28,8 @@ def model_predict_test(model: CupyVsKnnModel, tiny_session):
     coroutine = model.predict(tiny_session)
     predictions = loop.run_until_complete(coroutine)
     predicted_items, predicted_score = predictions['predicted_items'], predictions['scores']
-    predicted_score_py = [float(s) for s in predicted_score]
-    assert all([pred == expected for pred, expected in zip(predicted_items, [1, 2, 3, 4, 5, 6])])
+    predicted_score_py = [float(s) for s in predicted_score[0]]
+    assert all([pred == expected for pred, expected in zip(predicted_items[0], [1, 2, 3, 4, 5, 6])])
     assert all([abs(score - expected) < 0.01 for score, expected
                 in zip(predicted_score_py, [2.0, 1.666, 2.0, 3.666, 3.666, 1.666])])
 

@@ -124,19 +124,24 @@ class CupyVsKnnModel:
             await asyncio.sleep(0.0005)
         stream.synchronize()
         synch_time = time.time() - pre_synch
-        return_data['predicted_items'] = self.name_map.idx_to_name(unique_items, ITEM_ID)
-        return_data['scores'] = w_sum_items
+        return_data['predicted_items'] = self.name_map.idx_to_name(unique_items[:, 1:], ITEM_ID)
+        return_data['scores'] = w_sum_items[:, 1:]
         return_data['cpu_time'] = pre_synch - start
         return_data['gpu_time'] = synch_time
         return return_data
 
     def get_session_similarities(self, query, values_buffer, weights_buffer):
-        weights = self.weight_function(self.max_items_per_session)
-        # self._item_id_to_idx[cp.array(qq).flatten()].reshape(qq.shape)
-        keys_array = self._item_id_to_idx[query]
+        queries_lengths = cp.argmax(query == 0, axis=1)
+        batch_size = len(queries_lengths)
+        weights_rows = []
+        for idx, query_len in enumerate(queries_lengths):
+            weights_rows.append(cp.pad(self.weight_function(query_len), (0, query.shape[1])))
+        weights = cp.vstack(weights_rows).astype(cp.float32)
+        # keys_array = self._item_id_to_idx[cp.array(query).flatten()]
+        keys_array = self._item_id_to_idx[query].reshape(-1, 2)
         values_array = self._item_values
         sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,
-                                                                self.max_sessions_per_items,
+                                                                self.max_sessions_per_items, batch_size,
                                                                 values_buffer, weights_buffer)
         return sessions, session_similarities
 
@@ -144,18 +149,20 @@ class CupyVsKnnModel:
         selection = cp.argsort(session_similarities)[:, -self.top_k:]
         return cp.take_along_axis(sessions, selection, 1),  cp.take_along_axis(session_similarities, selection, 1)
 
-    def get_item_similarities(self, sessions, session_similarities, vb, wb):
-        keys_array = self._sess_id_to_idx[sessions]
+    def get_item_similarities(self, sessions, session_similarities, values_buffer, weights_buffer):
+        keys_array = self._sess_id_to_idx[sessions].reshape(-1, 2)
+        batch_size = len(sessions)
         values_array = self._sess_values
         unique_items, w_sum_items = self._get_similarities(keys_array, values_array, session_similarities,
-
-                                                           self.max_items_per_session, vb, wb)
+                                                           self.max_items_per_session, batch_size,
+                                                           values_buffer, weights_buffer)
         return unique_items, w_sum_items
 
-    def _get_similarities(self, key_array, values_array, weights_array, n_keys, values_buffer, weights_buffer):
+    def _get_similarities(self, key_array, values_array, weights_array, n_keys, batch_size, values_buffer, weights_buffer):
         self._copy_values_to_buffer(key_array, values_array, weights_array,
-                                    n_keys, values_buffer, weights_buffer)
-        arrays_unique = [cp.unique(values_buffer[i, :]) for i in range(len(key_array))]
+                                    n_keys, batch_size,
+                                    values_buffer, weights_buffer)
+        arrays_unique = [cp.unique(values_buffer[i, :]) for i in range(batch_size)]
         target_width = max([len(arr) for arr in arrays_unique])
         unique_values = cp.vstack(
             [cp.pad(arr, (0, target_width - len(arr))) for arr in arrays_unique]
@@ -163,14 +170,15 @@ class CupyVsKnnModel:
         similarities = self._reduce_buffer(unique_values, values_buffer, weights_buffer)
         return unique_values, similarities
 
-    def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys, values_buffer, weights_buffer):
+    def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys, batch_size,
+                               values_buffer, weights_buffer):
         n_values_per_keys = self.max_sessions_per_items if n_keys == self.max_items_per_session \
             else self.max_items_per_session
         kernel_args = (key_array, values_array, weights_array,
-                       key_array.shape[1], n_values_per_keys, n_keys, self._buffer_shape, key_array.shape[0],
+                       len(key_array), n_keys, n_values_per_keys, self._buffer_shape, batch_size,
                        values_buffer, weights_buffer)
         t_per_block = 256
-        target_threads = len(key_array) * n_values_per_keys * n_keys
+        target_threads = n_values_per_keys * n_keys * batch_size
         n_blocks = int(target_threads / t_per_block) + 1
         copy_values_kernel((n_blocks,), (t_per_block,), kernel_args)
 
