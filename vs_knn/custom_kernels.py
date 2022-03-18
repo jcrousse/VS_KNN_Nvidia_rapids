@@ -19,7 +19,8 @@ void copy_values_kernel(
     int row = tidx / row_len;
     int col = tidx % row_len;
     
-    int weight_read_idx = row % col_len;
+    //int batch_id = tid / (n_unique_values * buffer_len);
+    //int weight_read_idx = row % col_len + batch_id * ;
 
     if (tidx < (batch_len * batch_size)){
         out_values[tidx] = 0;
@@ -28,8 +29,7 @@ void copy_values_kernel(
             int value_idx = idx_array[row * 2] + col;
             if (value_idx <= idx_array[row * 2 + 1] && value_idx > 0){
                 out_values[tidx] = in_values[value_idx];
-                out_weights[tidx] = in_weight[weight_read_idx];
-                //printf("Reading value %d at row %d col %d and writing it at position %d \n", in_values[value_idx], row, col, tid);
+                out_weights[tidx] = in_weight[row];
             }
         }
     }
