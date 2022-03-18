@@ -12,6 +12,7 @@ def shuffle_df(df: cudf.DataFrame):
 
 def test_cupymodel(tiny_vsknn_df, tiny_session):
     # TODO test what happens if none of the query values are found in mapping
+    # TODO: test with top_k > n_sessions
     model = CupyVsKnnModel(top_k=2, max_sessions_per_items=20)
     model.train(tiny_vsknn_df)
     model_predict_test(model, tiny_session)
@@ -28,10 +29,11 @@ def model_predict_test(model: CupyVsKnnModel, tiny_session):
     coroutine = model.predict(tiny_session)
     predictions = loop.run_until_complete(coroutine)
     predicted_items, predicted_score = predictions['predicted_items'], predictions['scores']
-    predicted_score_py = [float(s) for s in predicted_score[0]]
-    assert all([pred == expected for pred, expected in zip(predicted_items[0], [1, 2, 3, 4, 5, 6])])
-    assert all([abs(score - expected) < 0.01 for score, expected
-                in zip(predicted_score_py, [2.0, 1.666, 2.0, 3.666, 3.666, 1.666])])
+    for idx in range(int(predicted_items.shape[0])):
+        predicted_score_py = [float(s) for s in predicted_score[idx]]
+        assert all([pred == expected for pred, expected in zip(predicted_items[idx], [1, 2, 3, 4, 5, 6])])
+        assert all([abs(score - expected) < 0.01 for score, expected
+                    in zip(predicted_score_py, [2.0, 1.666, 2.0, 3.666, 3.666, 1.666])])
 
 
 def test_keep_topk():

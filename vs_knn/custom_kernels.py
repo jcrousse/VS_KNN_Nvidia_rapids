@@ -6,11 +6,9 @@ void copy_values_kernel(
                             const int* idx_array, 
                             const int* in_values, 
                             const float* in_weight,
-                            const int num_idx,
                             const int row_len,
                             const int col_len, 
-                            const int batch_len,
-                            const int batch_size,
+                            const int num_batches,
                             int* out_values,
                             float* out_weights) {
 
@@ -19,18 +17,17 @@ void copy_values_kernel(
     int row = tidx / row_len;
     int col = tidx % row_len;
     
+    int batch_size = row_len * col_len;
     //int batch_id = tid / (n_unique_values * buffer_len);
     //int weight_read_idx = row % col_len + batch_id * ;
 
-    if (tidx < (batch_len * batch_size)){
+    if (tidx < (num_batches * batch_size)){
         out_values[tidx] = 0;
         out_weights[tidx] = 0.0;
-        if (row < num_idx){
-            int value_idx = idx_array[row * 2] + col;
-            if (value_idx <= idx_array[row * 2 + 1] && value_idx > 0){
-                out_values[tidx] = in_values[value_idx];
-                out_weights[tidx] = in_weight[row];
-            }
+        int value_idx = idx_array[row * 2] + col;
+        if (value_idx <= idx_array[row * 2 + 1] && value_idx > 0){
+            out_values[tidx] = in_values[value_idx];
+            out_weights[tidx] = in_weight[row];
         }
     }
 

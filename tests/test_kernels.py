@@ -62,6 +62,9 @@ def test_tiny_copy():
     [[0.1, 0.2, 0.3, 0.0],
     [0.1, 0.5, 0.0, 0.0]]
 
+    row len = sessions_per_item
+    col len = items per sessions
+
     """
     # tiny_idx_array = cp.array([[1, 2, 4, 0, 0],
     #                            [3, 4, 0, 0, 0]], dtype=cp.intc)
@@ -77,9 +80,9 @@ def test_tiny_copy():
     out_tv = cp.zeros((2, 50), dtype=cp.intc)
     out_tw = cp.zeros((2, 50), dtype=cp.float32)
     kernel_args = (tiny_idx_array, tiny_values, tiny_weights,
-                   len(tiny_idx_array), 10, 5, 50, 2,
+                   10, 5, 2,
                    out_tv, out_tw)
-    kernels.copy_values_kernel((1,), (100,), kernel_args)
+    kernels.copy_values_kernel((1,), (5 * 2 * 10,), kernel_args)
 
     assert out_tv[0, :].sum() == 114
     assert out_tv[1, :].sum() == 133
@@ -105,10 +108,10 @@ def test_copy_kernel():
 
 def run_copy_kernel():
     kernel_args = (idx_array, values_array, weight_array,
-                   len(idx_array), sessions_per_item, items_per_session, buffer_len, len(test_sessions_py),
+                   sessions_per_item, items_per_session, len(test_sessions_py),
                    out_values, out_weights)
     t_per_block = 256
-    target_threads = len(idx_array) * sessions_per_item
+    target_threads = sessions_per_item * items_per_session * len(test_sessions_py)
     n_blocks = int(target_threads / t_per_block) + 1
     kernels.copy_values_kernel((n_blocks, ), (t_per_block,), kernel_args)
 
