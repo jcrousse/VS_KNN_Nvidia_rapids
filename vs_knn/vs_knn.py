@@ -104,20 +104,16 @@ class CupyVsKnnModel:
         start = time.time()
         stream = cp.cuda.Stream(non_blocking=True)
         stream.use()
-        values_buffer = cp.zeros((self._buffer_shape, len(queries)), dtype=int_type)
-        weights_buffer = cp.zeros((self._buffer_shape, len(queries)), dtype=cp.float32)
+        values_buffer = cp.zeros((len(queries), self._buffer_shape), dtype=int_type)
+        weights_buffer = cp.zeros((len(queries), self._buffer_shape), dtype=cp.float32)
         queries_py = self.name_map.name_to_idx(queries, ITEM_ID)
         query_idx = cp.vstack([cp.pad(cp.array(q, dtype=int_type), (0, self.max_items_per_session - len(q)))
                                for q in queries_py])
 
         sessions, session_similarities = self.get_session_similarities(query_idx, values_buffer, weights_buffer)
-        if len(sessions) > self.top_k:
-            sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
+        sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
         unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities, values_buffer,
                                                                weights_buffer)
-        if unique_items[0] == 0 and len(unique_items) > 1:
-            unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
-
         if self.waste_some_time:
             d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
             d_ret = d_mat
@@ -145,20 +141,25 @@ class CupyVsKnnModel:
         return sessions, session_similarities
 
     def keep_topk_sessions(self, sessions, session_similarities):
-        # todo: cp.agsort(session_similarities)[, -self.top_k:]  cp.take_along_axis(sessions, selection, 1)
-        selection = cp.argsort(session_similarities)[-self.top_k:]
-        return sessions[selection], session_similarities[selection]
+        selection = cp.argsort(session_similarities)[:, -self.top_k:]
+        return cp.take_along_axis(sessions, selection, 1),  cp.take_along_axis(session_similarities, selection, 1)
 
     def get_item_similarities(self, sessions, session_similarities, vb, wb):
         keys_array = self._sess_id_to_idx[sessions]
         values_array = self._sess_values
         unique_items, w_sum_items = self._get_similarities(keys_array, values_array, session_similarities,
+
                                                            self.max_items_per_session, vb, wb)
         return unique_items, w_sum_items
 
     def _get_similarities(self, key_array, values_array, weights_array, n_keys, values_buffer, weights_buffer):
-        self._copy_values_to_buffer(key_array, values_array, weights_array, n_keys, values_buffer, weights_buffer)
-        unique_values = cp.unique(values_buffer)
+        self._copy_values_to_buffer(key_array, values_array, weights_array,
+                                    n_keys, values_buffer, weights_buffer)
+        arrays_unique = [cp.unique(values_buffer[i, :]) for i in range(len(key_array))]
+        target_width = max([len(arr) for arr in arrays_unique])
+        unique_values = cp.vstack(
+            [cp.pad(arr, (0, target_width - len(arr))) for arr in arrays_unique]
+        )
         similarities = self._reduce_buffer(unique_values, values_buffer, weights_buffer)
         return unique_values, similarities
 
@@ -166,20 +167,20 @@ class CupyVsKnnModel:
         n_values_per_keys = self.max_sessions_per_items if n_keys == self.max_items_per_session \
             else self.max_items_per_session
         kernel_args = (key_array, values_array, weights_array,
-                       len(key_array), n_values_per_keys, n_keys, self._buffer_shape,
+                       key_array.shape[1], n_values_per_keys, n_keys, self._buffer_shape, key_array.shape[0],
                        values_buffer, weights_buffer)
         t_per_block = 256
-        target_threads = len(key_array) * n_values_per_keys
+        target_threads = len(key_array) * n_values_per_keys * n_keys
         n_blocks = int(target_threads / t_per_block) + 1
         copy_values_kernel((n_blocks,), (t_per_block,), kernel_args)
 
     def _reduce_buffer(self, unique_values, values_buffer, weights_buffer):
         out_weights_groupby = cp.zeros_like(unique_values, dtype=cp.float32)
-        n_items = self._buffer_shape * len(unique_values)
         kernel_args = (values_buffer, weights_buffer, unique_values,
-                       len(unique_values), n_items,
+                       unique_values.shape[1], values_buffer.shape[1], values_buffer.shape[0],
                        out_weights_groupby)
         t_per_block = 256
+        n_items = unique_values.shape[1] * values_buffer.shape[1] * values_buffer.shape[0]
         n_blocks = int(n_items / t_per_block) + 1
         groubpy_kernel((n_blocks,), (t_per_block,), kernel_args)
         return out_weights_groupby

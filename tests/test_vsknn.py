@@ -1,5 +1,6 @@
 from vs_knn.vs_knn import CupyVsKnnModel
 import cudf
+import cupy as cp
 import asyncio
 from vs_knn.col_names import SESSION_ID, ITEM_ID
 
@@ -31,6 +32,32 @@ def model_predict_test(model: CupyVsKnnModel, tiny_session):
     assert all([pred == expected for pred, expected in zip(predicted_items, [1, 2, 3, 4, 5, 6])])
     assert all([abs(score - expected) < 0.01 for score, expected
                 in zip(predicted_score_py, [2.0, 1.666, 2.0, 3.666, 3.666, 1.666])])
+
+
+def test_keep_topk():
+    """
+    sessions:
+    [[1, 2, 3, 4],
+    [1, 2, 3, 4]]
+    similarities:
+    [[1., 2., 3., 4.],
+    [4., 3., 2., 1.]]
+    top_k = 2
+    expected results:
+     sessions:   [[1, 2],
+                 [4, 3]]
+     similarities:  [[4., 3.],
+                    [4., 3.]]
+    """
+    sessions = cp.vstack([cp.arange(1, 5), cp.arange(1, 5)])
+    session_similarities = cp.vstack([
+        cp.arange(1, 5, dtype=cp.float32),
+        cp.flip(cp.arange(1, 5, dtype=cp.float32))])
+    model = CupyVsKnnModel(top_k=2)
+    sess, sims = model.keep_topk_sessions(sessions, session_similarities)
+    for i in range(len(sess[0])):
+        assert sess[0, i] == int(sims[0, i])
+        assert sess[1, i] == 5 - int(sims[1, i])
 
 
 def test_save_load(tiny_vsknn_df, tiny_session, tmpdir):

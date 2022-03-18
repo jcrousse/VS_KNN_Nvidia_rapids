@@ -21,11 +21,11 @@ idx_array = cp.vstack([start_end_idx[int(i)] for i in test_sessions.flatten()]).
 weight_array = cp.arange(items_per_session, dtype=cp.float32) / items_per_session
 
 buffer_len = sessions_per_item * items_per_session
-out_values = cp.random.randint(1, 100, (len(test_sessions_py), buffer_len), dtype=cp.intc)
+out_values = cp.random.randint(0, 100, (len(test_sessions_py), buffer_len), dtype=cp.intc)
 out_weights = cp.random.random((len(test_sessions_py), buffer_len), dtype=cp.float32)
 
 mask = cp.random.randint(0, 2, (len(test_sessions_py), buffer_len), dtype=cp.intc)
-values_buffer = cp.random.randint(1, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc) * mask
+values_buffer = cp.random.randint(0, 500, (len(test_sessions_py), buffer_len), dtype=cp.intc) * mask
 weight_buffer = cp.random.random((len(test_sessions_py), buffer_len), dtype=cp.float32) * mask
 weight_buffer = weight_buffer.astype(cp.float32)
 
