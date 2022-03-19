@@ -36,6 +36,26 @@ def model_predict_test(model: CupyVsKnnModel, tiny_session):
                     in zip(predicted_score_py, [2.0, 1.666, 2.0, 3.666, 3.666, 1.666])])
 
 
+def test_unique_per_row():
+    """
+    unique per col for
+    [[4, 1, 3, 0, 0,
+      3, 3, 0, 0, 0,
+      1, 1, 1, 0, 0,
+      1, 2, 1, 0, 0,
+    ]]
+    :return:
+    """
+    test2d = cp.array([[4, 1, 3, 0, 0],
+                        [3, 3, 0, 0, 0],
+                        [1, 1, 1, 0, 0],
+                        [1, 2, 1, 0, 0],
+                        ])
+    model = CupyVsKnnModel()
+    res = model._unique_per_row(test2d)
+    assert res.shape[1] == test2d.shape[1] - 2
+
+
 def test_keep_topk():
     """
     sessions:

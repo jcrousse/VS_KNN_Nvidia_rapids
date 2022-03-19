@@ -129,9 +129,10 @@ class CupyVsKnnModel:
         queries_lengths = cp.argmax(query == 0, axis=1)
         batch_size = len(queries_lengths)
         weights_rows = []
-        for idx, query_len in enumerate(queries_lengths):
-            weights_rows.append(cp.pad(self.weight_function(query_len), (0, query.shape[1] - int(query_len))))
-        weights = cp.vstack(weights_rows).astype(cp.float32)
+        # for idx, query_len in enumerate(queries_lengths):
+        #     weights_rows.append(cp.pad(self.weight_function(query_len), (0, query.shape[1] - int(query_len))))
+        # weights = cp.vstack(weights_rows).astype(cp.float32)
+        weights = cp.ones_like(query, dtype=cp.float32)
         keys_array = self._item_id_to_idx[query].reshape(-1, 2)
         values_array = self._item_values
         sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,
@@ -158,13 +159,22 @@ class CupyVsKnnModel:
         self._copy_values_to_buffer(key_array, values_array, weights_array,
                                     n_keys, n_values, batch_size,
                                     values_buffer, weights_buffer)
-        arrays_unique = [cp.unique(values_buffer[i, :]) for i in range(batch_size)]
-        target_width = max([len(arr) for arr in arrays_unique])
-        unique_values = cp.vstack(
-            [cp.pad(arr, (0, target_width - len(arr))) for arr in arrays_unique]
-        )
+        unique_values = self._unique_per_row(values_buffer)
         similarities = self._reduce_buffer(unique_values, values_buffer, weights_buffer)
         return unique_values, similarities
+
+    def _unique_per_row(self, value_buffers):
+        value_buffers.sort(axis=1)
+
+        aux = value_buffers
+        mask = cp.empty(aux.shape, dtype=cp.bool_)
+        mask[:, 1] = True
+        mask[:, 1:] = aux[:, 1:] != aux[:, :-1]
+        inter = cp.zeros_like(value_buffers) + mask * value_buffers
+        inter.sort(axis=1)
+        ret = inter[:, (inter.sum(axis=0) != 0)]
+        return ret.astype(int_type)
+
 
     def _copy_values_to_buffer(self, key_array, values_array, weights_array,
                                n_keys, n_values, batch_size,
