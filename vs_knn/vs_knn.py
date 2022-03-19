@@ -94,7 +94,7 @@ class CupyVsKnnModel:
             dmf = round(total_bytes / 10 ** 6, 2)
             print(f"Device memory footprint for index objects: {dmf} Mb)")
 
-    async def predict(self, queries: list):
+    def predict(self, queries: list):
         return_data = {
             'predicted_items': [],
             'scores': cp.array([]),
@@ -117,8 +117,6 @@ class CupyVsKnnModel:
             for i in range(15):
                 d_ret = cp.matmul(d_ret, d_mat)
         pre_synch = time.time()
-        while not stream.done:
-            await asyncio.sleep(0.0005)
         stream.synchronize()
         synch_time = time.time() - pre_synch
         return_data['predicted_items'] = self.name_map.idx_to_name(unique_items[:, 1:], ITEM_ID)
@@ -134,7 +132,6 @@ class CupyVsKnnModel:
         for idx, query_len in enumerate(queries_lengths):
             weights_rows.append(cp.pad(self.weight_function(query_len), (0, query.shape[1] - int(query_len))))
         weights = cp.vstack(weights_rows).astype(cp.float32)
-        # keys_array = self._item_id_to_idx[cp.array(query).flatten()]
         keys_array = self._item_id_to_idx[query].reshape(-1, 2)
         values_array = self._item_values
         sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,

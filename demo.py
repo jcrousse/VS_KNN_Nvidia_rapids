@@ -7,7 +7,6 @@ import cupy as cp
 from vs_knn.vs_knn import CupyVsKnnModel
 from tqdm import tqdm
 import pickle
-import asyncio
 
 def get_arguments():
     """Get this script's command line arguments"""
@@ -79,7 +78,7 @@ def train_session_rec_repo():
     train_df = read_dataset(train_filepath, columns, delimiter)
     test_df = read_dataset(test_filepath, columns, delimiter)
 
-    trained_model = CupyVsKnnModel(top_k=100, max_sessions_per_items=1000, max_item_per_session=10, decay='quadratic')
+    trained_model = CupyVsKnnModel(top_k=100, max_sessions_per_items=1000, max_item_per_session=10)
     trained_model.train(train_df)
 
     test_sessions_array = get_test_examples(test_df)
@@ -114,10 +113,9 @@ def test_a_model(model, test_data):
     for test_session in pbar:
         x, y = session_to_xy(test_session)
         if x is not None:
-            loop = asyncio.get_event_loop()
-            coroutine = model.predict(x)
-            prediction = loop.run_until_complete(coroutine)
-            items_pred, item_scores = prediction['predicted_items'], prediction['scores']
+            x = x[-10:]
+            prediction = model.predict([x])
+            items_pred, item_scores = prediction['predicted_items'][0], prediction['scores'][0]
             total_cpu.append(prediction['cpu_time'])
             total_gpu.append(prediction['gpu_time'])
             n_treated += 1
