@@ -2,7 +2,6 @@ import gc
 import os
 import pickle
 import time
-import asyncio
 
 import cupy as cp
 from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
@@ -104,7 +103,8 @@ class CupyVsKnnModel:
             'predicted_items': [],
             'scores': cp.array([]),
             'cpu_time': 0,
-            'gpu_time': 0
+            'gpu_time': 0,
+            'total_time': 0
         }
 
         start = time.time()
@@ -115,31 +115,9 @@ class CupyVsKnnModel:
         len_per_query = [len(q) for q in queries_py]
         query_idx = cp.vstack([cp.pad(cp.array(q, dtype=int_type), (0, self.max_items_per_session - len(q)))
                                for q in queries_py])
-        stream.synchronize()
-        prep_query_time = time.time() - start
-        return_data['prep_query_time'] = prep_query_time
-        acc = prep_query_time
-
         sessions, session_similarities = self.get_session_similarities(query_idx, len_per_query)
-
-        stream.synchronize()
-        sess_sim_time = time.time() - start - acc
-        return_data['sess_sim_time'] = sess_sim_time
-        acc += sess_sim_time
-
         sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
-
-        stream.synchronize()
-        topk_time = time.time() - start - acc
-        return_data['topk_time'] = topk_time
-        acc += topk_time
-
         unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
-
-        stream.synchronize()
-        item_sim_time = time.time() - start - acc
-        return_data['item_sim_time'] = item_sim_time
-        acc += item_sim_time
 
         if self.waste_some_time:
             d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
@@ -153,6 +131,7 @@ class CupyVsKnnModel:
         return_data['scores'] = w_sum_items[:, 1:]
         return_data['cpu_time'] = pre_synch - start
         return_data['gpu_time'] = synch_time
+        return_data['total_time'] = synch_time + (pre_synch - start)
 
         return return_data
 
