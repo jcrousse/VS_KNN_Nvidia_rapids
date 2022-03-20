@@ -53,6 +53,11 @@ class CupyVsKnnModel:
         else:
             self.weight_function = no_decay
 
+        self.precalculated_weights = cp.vstack([
+            cp.pad(self.weight_function(i), (0, self.max_items_per_session - i))
+            for i in range(1, self.max_items_per_session + 1)
+        ])
+
     def train(self, train_df, verbose=True):
 
         train_df = train_df.rename(columns={self.item_col: ITEM_ID,
@@ -101,16 +106,41 @@ class CupyVsKnnModel:
             'cpu_time': 0,
             'gpu_time': 0
         }
+
         start = time.time()
         stream = cp.cuda.Stream(non_blocking=True)
         stream.use()
+
         queries_py = self.name_map.name_to_idx(queries, ITEM_ID)
+        len_per_query = [len(q) for q in queries_py]
         query_idx = cp.vstack([cp.pad(cp.array(q, dtype=int_type), (0, self.max_items_per_session - len(q)))
                                for q in queries_py])
+        stream.synchronize()
+        prep_query_time = time.time() - start
+        return_data['prep_query_time'] = prep_query_time
+        acc = prep_query_time
 
-        sessions, session_similarities = self.get_session_similarities(query_idx)
+        sessions, session_similarities = self.get_session_similarities(query_idx, len_per_query)
+
+        stream.synchronize()
+        sess_sim_time = time.time() - start - acc
+        return_data['sess_sim_time'] = sess_sim_time
+        acc += sess_sim_time
+
         sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
+
+        stream.synchronize()
+        topk_time = time.time() - start - acc
+        return_data['topk_time'] = topk_time
+        acc += topk_time
+
         unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
+
+        stream.synchronize()
+        item_sim_time = time.time() - start - acc
+        return_data['item_sim_time'] = item_sim_time
+        acc += item_sim_time
+
         if self.waste_some_time:
             d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
             d_ret = d_mat
@@ -123,16 +153,13 @@ class CupyVsKnnModel:
         return_data['scores'] = w_sum_items[:, 1:]
         return_data['cpu_time'] = pre_synch - start
         return_data['gpu_time'] = synch_time
+
         return return_data
 
-    def get_session_similarities(self, query):
+    def get_session_similarities(self, query, len_per_query):
         queries_lengths = cp.argmax(query == 0, axis=1)
         batch_size = len(queries_lengths)
-        weights_rows = []
-        # for idx, query_len in enumerate(queries_lengths):
-        #     weights_rows.append(cp.pad(self.weight_function(query_len), (0, query.shape[1] - int(query_len))))
-        # weights = cp.vstack(weights_rows).astype(cp.float32)
-        weights = cp.ones_like(query, dtype=cp.float32)
+        weights = self.precalculated_weights[len_per_query]
         keys_array = self._item_id_to_idx[query].reshape(-1, 2)
         values_array = self._item_values
         sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,
@@ -163,14 +190,14 @@ class CupyVsKnnModel:
         similarities = self._reduce_buffer(unique_values, values_buffer, weights_buffer)
         return unique_values, similarities
 
-    def _unique_per_row(self, value_buffers):
-        value_buffers.sort(axis=1)
+    def _unique_per_row(self, value_buffer):
+        aux = value_buffer.copy()
+        aux.sort(axis=1)
 
-        aux = value_buffers
         mask = cp.empty(aux.shape, dtype=cp.bool_)
         mask[:, 1] = True
         mask[:, 1:] = aux[:, 1:] != aux[:, :-1]
-        inter = cp.zeros_like(value_buffers) + mask * value_buffers
+        inter = cp.zeros_like(aux) + mask * aux
         inter.sort(axis=1)
         ret = inter[:, (inter.sum(axis=0) != 0)]
         return ret.astype(int_type)
