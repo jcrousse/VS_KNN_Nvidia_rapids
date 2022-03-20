@@ -46,15 +46,16 @@ class NameIdxMap:
 
         return self
 
-    def name_to_idx(self, query, column_name):
-        """ for every name in query array, corresponding to a value in column, returns the corresponding idx"""
+    def name_to_idx(self, queries, column_name):
+        """ for every name in queries array, corresponding to a value in column, returns the corresponding idx"""
         if self.skip_missings:
-            return [self._name_to_idx_map[column_name][q] for q in query if q in self._name_to_idx_map[column_name]]
+            return [[self._name_to_idx_map[column_name][e] for e in q if e in self._name_to_idx_map[column_name]]
+                    for q in queries]
         else:
-            return [self._name_to_idx_map[column_name][q] for q in query]
+            return [[self._name_to_idx_map[column_name][e] for e in q] for q in queries]
 
     def idx_to_name(self, query, column_name):
-        """ for every idx in query array and a column name, returns the original name"""
+        """ for every idx in queries array and a column name, returns the original name"""
         return self._idx_to_name_map[column_name][query]
 
     def _validate_df(self, df):

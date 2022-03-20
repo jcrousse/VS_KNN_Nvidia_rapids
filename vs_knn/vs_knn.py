@@ -2,7 +2,6 @@ import gc
 import os
 import pickle
 import time
-import asyncio
 
 import cupy as cp
 from vs_knn.col_names import SESSION_ID, ITEM_ID, TIMESTAMP
@@ -29,7 +28,7 @@ def no_decay(n):
 
 class CupyVsKnnModel:
     def __init__(self,  decay='linear', top_k=100, max_sessions_per_items=5000, max_item_per_session=10,
-                 item_col=ITEM_ID, time_col=TIMESTAMP, session_col=SESSION_ID):
+                 item_col=ITEM_ID, time_col=TIMESTAMP, session_col=SESSION_ID, waste_some_time=False):
         self.top_k = top_k
 
         self.max_sessions_per_items = max_sessions_per_items
@@ -44,12 +43,19 @@ class CupyVsKnnModel:
 
         self.name_map = NameIdxMap(skips_missings=True)
 
+        self.waste_some_time = waste_some_time
+
         if decay == 'linear':
             self.weight_function = linear_decay
         elif decay == 'quadratic':
             self.weight_function = quadratic_decay
         else:
             self.weight_function = no_decay
+
+        self.precalculated_weights = cp.vstack([
+            cp.pad(self.weight_function(i), (0, self.max_items_per_session - i))
+            for i in range(1, self.max_items_per_session + 1)
+        ])
 
     def train(self, train_df, verbose=True):
 
@@ -92,92 +98,111 @@ class CupyVsKnnModel:
             dmf = round(total_bytes / 10 ** 6, 2)
             print(f"Device memory footprint for index objects: {dmf} Mb)")
 
-    async def predict(self, query_items):
+    def predict(self, queries: list):
         return_data = {
             'predicted_items': [],
             'scores': cp.array([]),
             'cpu_time': 0,
-            'gpu_time': 0
+            'gpu_time': 0,
+            'total_time': 0
         }
+
         start = time.time()
         stream = cp.cuda.Stream(non_blocking=True)
         stream.use()
-        vb = cp.zeros(self._buffer_shape, dtype=int_type)
-        wb = cp.zeros(self._buffer_shape, dtype=cp.float32)
-        query_idx = self.name_map.name_to_idx(query_items, ITEM_ID)
-        if query_idx:
-            sessions, session_similarities = self.get_session_similarities(query_idx, vb, wb)
-            if len(sessions) > self.top_k:
-                sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
-            unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities, vb, wb)
-            if unique_items[0] == 0 and len(unique_items) > 1:
-                unique_items, w_sum_items = unique_items[1:], w_sum_items[1:]
 
-            # d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
-            # d_ret = d_mat
-            # for i in range(15):
-            #     d_ret = cp.matmul(d_ret, d_mat)
-            while not stream.done:
-                await asyncio.sleep(0.0005)
-            pre_synch = time.time()
-            stream.synchronize()
-            synch_time = time.time() - pre_synch
-            return_data['predicted_items'] = self.name_map.idx_to_name(unique_items, ITEM_ID)
-            return_data['scores'] = w_sum_items
-            return_data['cpu_time'] = pre_synch - start
-            return_data['gpu_time'] = synch_time
+        queries_py = self.name_map.name_to_idx(queries, ITEM_ID)
+        len_per_query = [len(q) for q in queries_py]
+        query_idx = cp.vstack([cp.pad(cp.array(q, dtype=int_type), (0, self.max_items_per_session - len(q)))
+                               for q in queries_py])
+        sessions, session_similarities = self.get_session_similarities(query_idx, len_per_query)
+        sessions, session_similarities = self.keep_topk_sessions(sessions, session_similarities)
+        unique_items, w_sum_items = self.get_item_similarities(sessions, session_similarities)
+
+        if self.waste_some_time:
+            d_mat = cp.random.randn(1024 * 1024, dtype=cp.float64).reshape(1024, 1024)
+            d_ret = d_mat
+            for i in range(15):
+                d_ret = cp.matmul(d_ret, d_mat)
+        pre_synch = time.time()
+        stream.synchronize()
+        synch_time = time.time() - pre_synch
+        return_data['predicted_items'] = self.name_map.idx_to_name(unique_items[:, 1:], ITEM_ID)
+        return_data['scores'] = w_sum_items[:, 1:]
+        return_data['cpu_time'] = pre_synch - start
+        return_data['gpu_time'] = synch_time
+        return_data['total_time'] = synch_time + (pre_synch - start)
+
         return return_data
 
-    def get_session_similarities(self, query, vb, wb):
-        # todo: check not making deep copy here
-        weights = self.weight_function(len(query))
-        keys_array = self._item_id_to_idx[query]
+    def get_session_similarities(self, query, len_per_query):
+        queries_lengths = cp.argmax(query == 0, axis=1)
+        batch_size = len(queries_lengths)
+        weights = self.precalculated_weights[len_per_query]
+        keys_array = self._item_id_to_idx[query].reshape(-1, 2)
         values_array = self._item_values
         sessions, session_similarities = self._get_similarities(keys_array, values_array, weights,
-                                                                self.max_sessions_per_items, vb, wb)
+                                                                self.max_sessions_per_items, self.max_items_per_session,
+                                                                batch_size)
         return sessions, session_similarities
 
     def keep_topk_sessions(self, sessions, session_similarities):
-        selection = cp.argsort(session_similarities)[-self.top_k:]
-        return sessions[selection], session_similarities[selection]
+        selection = cp.argsort(session_similarities)[:, -self.top_k:]
+        return cp.take_along_axis(sessions, selection, 1),  cp.take_along_axis(session_similarities, selection, 1)
 
-    def get_item_similarities(self, sessions, session_similarities, vb, wb):
-        keys_array = self._sess_id_to_idx[sessions]
+    def get_item_similarities(self, sessions, session_similarities):
+        keys_array = self._sess_id_to_idx[sessions].reshape(-1, 2)
+        batch_size = len(sessions)
         values_array = self._sess_values
         unique_items, w_sum_items = self._get_similarities(keys_array, values_array, session_similarities,
-                                                           self.max_items_per_session, vb, wb)
+                                                           self.max_items_per_session, sessions.shape[1], batch_size)
         return unique_items, w_sum_items
 
-    def _get_similarities(self, key_array, values_array, weights_array, n_keys, vb, wb):
-        self._copy_values_to_buffer(key_array, values_array, weights_array, n_keys, vb, wb)
-        unique_values = cp.unique(vb)
-        similarities = self._reduce_buffer(unique_values, vb, wb)
+    def _get_similarities(self, key_array, values_array, weights_array,
+                          n_keys, n_values, batch_size):
+        values_buffer = cp.zeros((batch_size, n_keys * n_values), dtype=int_type)
+        weights_buffer = cp.zeros((batch_size, n_keys * n_values), dtype=cp.float32)
+        self._copy_values_to_buffer(key_array, values_array, weights_array,
+                                    n_keys, n_values, batch_size,
+                                    values_buffer, weights_buffer)
+        unique_values = self._unique_per_row(values_buffer)
+        similarities = self._reduce_buffer(unique_values, values_buffer, weights_buffer)
         return unique_values, similarities
 
-    def _copy_values_to_buffer(self, key_array, values_array, weights_array, n_keys, vb, wb):
-        n_values_per_keys = self.max_sessions_per_items if n_keys == self.max_items_per_session \
-            else self.max_items_per_session
+    def _unique_per_row(self, value_buffer):
+        aux = value_buffer.copy()
+        aux.sort(axis=1)
+
+        mask = cp.empty(aux.shape, dtype=cp.bool_)
+        mask[:, 1] = True
+        mask[:, 1:] = aux[:, 1:] != aux[:, :-1]
+        inter = cp.zeros_like(aux) + mask * aux
+        inter.sort(axis=1)
+        ret = inter[:, (inter.sum(axis=0) != 0)]
+        return ret.astype(int_type)
+
+
+    def _copy_values_to_buffer(self, key_array, values_array, weights_array,
+                               n_keys, n_values, batch_size,
+                               values_buffer, weights_buffer):
         kernel_args = (key_array, values_array, weights_array,
-                       len(key_array), n_values_per_keys, n_keys, self._buffer_shape,
-                       vb,  wb)
+                       n_keys, n_values, batch_size,
+                       values_buffer, weights_buffer)
         t_per_block = 256
-        target_threads = len(key_array) * n_values_per_keys
+        target_threads = n_values * n_keys * batch_size
         n_blocks = int(target_threads / t_per_block) + 1
         copy_values_kernel((n_blocks,), (t_per_block,), kernel_args)
 
-    def _reduce_buffer(self, unique_values, vb, wb):
+    def _reduce_buffer(self, unique_values, values_buffer, weights_buffer):
         out_weights_groupby = cp.zeros_like(unique_values, dtype=cp.float32)
-        n_items = self._buffer_shape * len(unique_values)
-        kernel_args = (vb, wb, unique_values,
-                       len(unique_values), n_items,
+        kernel_args = (values_buffer, weights_buffer, unique_values,
+                       unique_values.shape[1], values_buffer.shape[1], values_buffer.shape[0],
                        out_weights_groupby)
         t_per_block = 256
+        n_items = unique_values.shape[1] * values_buffer.shape[1] * values_buffer.shape[0]
         n_blocks = int(n_items / t_per_block) + 1
         groubpy_kernel((n_blocks,), (t_per_block,), kernel_args)
         return out_weights_groupby
-
-    def _step3_keep_topk_sessions(self, session_items):
-        raise NotImplementedError
 
     def _keep_n_latest_sessions(self, train_data):
         return self._keep_n_latest_values(train_data, ITEM_ID, self.max_sessions_per_items)

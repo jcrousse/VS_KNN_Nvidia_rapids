@@ -66,7 +66,7 @@ if __name__ == '__main__':
     sm_calls = 4
     vsk_calls = 1000
     sm_input = [{'N': 1024, 'power': 256}] * sm_calls
-    vsk_input = [{'query_items': [214716935]}] * vsk_calls
+    vsk_input = [{'queries': [214716935]}] * vsk_calls
 
     multi_thread_calls(sm_model, sm_input,  True)
     multi_thread_calls(sm_model, sm_input,  False)
